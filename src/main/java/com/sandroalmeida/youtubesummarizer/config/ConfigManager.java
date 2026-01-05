@@ -5,7 +5,7 @@ import java.io.InputStream;
 import java.util.Properties;
 
 /**
- * Configuration manager for LinkedIn automation tool.
+ * Configuration manager for YouTube Summarizer.
  * Handles loading and accessing configuration properties.
  */
 public class ConfigManager {
