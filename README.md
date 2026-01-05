@@ -1,10 +1,8 @@
-# Professional Hub Scraper
-This project is the attempt to create the simplest Java application to scrape Linkedin Profiles.
-The goal is fetching profiles directly from Linkedin Recruiter and save them locally in JSON format.
+# YouTube Summarizer
+This project will be used to summarize YouTube videos.
 
 # Architecture Decisions
-This application don't connect to Databases, relying only on the configurations file.
-Another file will be created to manage the profiles already scraped.
+This application will be developed to provide video summarization capabilities.
 
 # Configurations
 browser.connect.to.running=true - is used to connect to a running browser instance.

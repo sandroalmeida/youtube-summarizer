@@ -5,13 +5,13 @@
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>io.professionalhub.scraper</groupId>
-    <artifactId>linkedin-profile-scraper</artifactId>
+    <groupId>com.sandroalmeida.youtubesummarizer</groupId>
+    <artifactId>youtube-summarizer</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
-    <name>LinkedIn Profile Scraper</name>
-    <description>LinkedIn profile automation tool using Playwright</description>
+    <name>YouTube Summarizer</name>
+    <description>YouTube video summarization tool</description>
 
     <properties>
         <maven.compiler.source>11</maven.compiler.source>
@@ -96,7 +96,7 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>3.1.0</version>
                 <configuration>
-                    <mainClass>io.professionalhub.scraper.Main</mainClass>
+                    <mainClass>com.sandroalmeida.youtubesummarizer.Main</mainClass>
                 </configuration>
             </plugin>
         </plugins>
