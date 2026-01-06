@@ -126,6 +126,12 @@ public class YouTubeScraperService {
                     continue;
                 }
 
+                // Skip sponsored/ad videos
+                if (isSponsoredVideo(item)) {
+                    logger.debug("Skipping sponsored video at index {}", i);
+                    continue;
+                }
+
                 VideoInfo video = extractVideoInfo(item);
                 if (video != null && video.getVideoId() != null) {
                     videos.add(video);
@@ -152,6 +158,34 @@ public class YouTubeScraperService {
         // Also check for the live avatar ring indicator
         Locator liveRing = item.locator(".yt-spec-avatar-shape--live-ring, .yt-spec-avatar-shape__live-badge");
         if (liveRing.count() > 0) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private boolean isSponsoredVideo(Locator item) {
+        // Check for ad layout renderer
+        Locator adLayout = item.locator("ytd-in-feed-ad-layout-renderer, ytd-ad-slot-renderer");
+        if (adLayout.count() > 0) {
+            return true;
+        }
+
+        // Check for "Sponsored" badge
+        Locator sponsoredBadge = item.locator("ad-badge-view-model, .yt-badge-shape--ad");
+        if (sponsoredBadge.count() > 0) {
+            return true;
+        }
+
+        // Check for ad-related elements
+        Locator adElements = item.locator("feed-ad-metadata-view-model, ad-button-view-model");
+        if (adElements.count() > 0) {
+            return true;
+        }
+
+        // Check for Google Ads links
+        Locator adLinks = item.locator("a[href*='googleadservices.com'], a[href*='doubleclick.net']");
+        if (adLinks.count() > 0) {
             return true;
         }
 
