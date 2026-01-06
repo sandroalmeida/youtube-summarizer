@@ -180,21 +180,54 @@ public class YouTubeScraperService {
             }
         }
 
-        // Extract title
-        Locator title = item.locator("#video-title, #video-title-link").first();
-        if (title.count() > 0) {
-            String titleText = title.getAttribute("title");
-            if (titleText == null || titleText.isEmpty()) {
-                titleText = title.textContent();
-            }
-            video.setTitle(titleText != null ? titleText.trim() : "");
+        // Extract title - try multiple selectors for different YouTube layouts
+        String titleText = null;
+
+        // Try the new lockup view model structure first (h3 with title attribute)
+        Locator h3Title = item.locator("h3[title]").first();
+        if (h3Title.count() > 0) {
+            titleText = h3Title.getAttribute("title");
         }
 
-        // Extract channel name
-        Locator channel = item.locator("ytd-channel-name a, #text.ytd-channel-name").first();
-        if (channel.count() > 0) {
-            video.setChannelName(channel.textContent().trim());
+        // Try the link with aria-label in the new structure
+        if (titleText == null || titleText.isEmpty()) {
+            Locator linkTitle = item.locator("a.yt-lockup-metadata-view-model__title").first();
+            if (linkTitle.count() > 0) {
+                titleText = linkTitle.getAttribute("aria-label");
+            }
         }
+
+        // Fall back to the classic selectors
+        if (titleText == null || titleText.isEmpty()) {
+            Locator title = item.locator("#video-title, #video-title-link").first();
+            if (title.count() > 0) {
+                titleText = title.getAttribute("title");
+                if (titleText == null || titleText.isEmpty()) {
+                    titleText = title.textContent();
+                }
+            }
+        }
+
+        video.setTitle(titleText != null ? titleText.trim() : "");
+
+        // Extract channel name - try multiple selectors for different YouTube layouts
+        String channelName = null;
+
+        // Try the new lockup view model structure
+        Locator channelLink = item.locator("yt-content-metadata-view-model a[href^='/@']").first();
+        if (channelLink.count() > 0) {
+            channelName = channelLink.textContent();
+        }
+
+        // Fall back to classic selectors
+        if (channelName == null || channelName.isEmpty()) {
+            Locator channel = item.locator("ytd-channel-name a, #text.ytd-channel-name").first();
+            if (channel.count() > 0) {
+                channelName = channel.textContent();
+            }
+        }
+
+        video.setChannelName(channelName != null ? channelName.trim() : "");
 
         // Extract duration
         Locator duration = item.locator("badge-shape .yt-badge-shape, ytd-thumbnail-overlay-time-status-renderer span").first();
