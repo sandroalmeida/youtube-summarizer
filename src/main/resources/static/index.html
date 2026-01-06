@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Summarizer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="tabs">
+            <button class="tab active" data-tab="subscriptions">Subscriptions</button>
+            <button class="tab" data-tab="home">Home</button>
+        </div>
+        <div class="account-info" id="account-info">
+            <span class="account-name">Loading...</span>
+            <span class="account-handle"></span>
+        </div>
+    </header>
+
+    <main>
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Loading videos...</p>
+        </div>
+
+        <div class="video-grid" id="video-grid"></div>
+
+        <button class="load-more" id="load-more">Load More</button>
+    </main>
+
+    <div class="summary-modal" id="summary-modal">
+        <div class="summary-content">
+            <button class="close-modal">&times;</button>
+            <h3 id="summary-title">Video Title</h3>
+            <div class="summary-loading" id="summary-loading">
+                <div class="spinner"></div>
+                <p>Getting AI Summary...</p>
+            </div>
+            <div class="summary-text" id="summary-text"></div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
