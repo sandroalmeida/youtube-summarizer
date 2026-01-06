@@ -119,6 +119,13 @@ public class YouTubeScraperService {
         for (int i = 0; i < count; i++) {
             try {
                 Locator item = videoItems.nth(i);
+
+                // Skip live videos - they don't have transcripts
+                if (isLiveVideo(item)) {
+                    logger.debug("Skipping live video at index {}", i);
+                    continue;
+                }
+
                 VideoInfo video = extractVideoInfo(item);
                 if (video != null && video.getVideoId() != null) {
                     videos.add(video);
@@ -130,6 +137,25 @@ public class YouTubeScraperService {
 
         logger.info("Successfully extracted {} videos", videos.size());
         return videos;
+    }
+
+    private boolean isLiveVideo(Locator item) {
+        // Check for live video badge (class yt-badge-shape--thumbnail-live or text "LIVE")
+        Locator liveBadge = item.locator("badge-shape.yt-badge-shape--thumbnail-live, .yt-thumbnail-overlay-badge-view-model badge-shape");
+        if (liveBadge.count() > 0) {
+            String badgeText = liveBadge.first().textContent();
+            if (badgeText != null && badgeText.trim().equalsIgnoreCase("LIVE")) {
+                return true;
+            }
+        }
+
+        // Also check for the live avatar ring indicator
+        Locator liveRing = item.locator(".yt-spec-avatar-shape--live-ring, .yt-spec-avatar-shape__live-badge");
+        if (liveRing.count() > 0) {
+            return true;
+        }
+
+        return false;
     }
 
     private VideoInfo extractVideoInfo(Locator item) {
