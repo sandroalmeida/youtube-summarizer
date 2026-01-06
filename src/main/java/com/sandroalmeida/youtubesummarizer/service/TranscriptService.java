@@ -190,8 +190,34 @@ public class TranscriptService {
             return null;
         }
 
+        // Wait for the segment list container to appear
+        Locator segmentList = page.locator("ytd-transcript-segment-list-renderer #segments-container");
+        try {
+            segmentList.first().waitFor(new Locator.WaitForOptions().setTimeout(elementWaitTimeout));
+            logger.info("Segment list container found");
+        } catch (Exception e) {
+            logger.debug("Segment list container not found: {}", e.getMessage());
+        }
+
         // Give it a moment to load all segments
-        page.waitForTimeout(1500);
+        page.waitForTimeout(2500);
+
+        // Scroll within the transcript panel to load all lazy-loaded segments
+        try {
+            Locator scrollContainer = page.locator("ytd-transcript-segment-list-renderer").first();
+            if (scrollContainer.count() > 0) {
+                // Scroll to bottom multiple times to load all segments
+                for (int i = 0; i < 5; i++) {
+                    page.evaluate("document.querySelector('ytd-transcript-segment-list-renderer').scrollBy(0, 2000)");
+                    page.waitForTimeout(300);
+                }
+                // Scroll back to top
+                page.evaluate("document.querySelector('ytd-transcript-segment-list-renderer').scrollTop = 0");
+                page.waitForTimeout(500);
+            }
+        } catch (Exception e) {
+            logger.debug("Could not scroll transcript panel: {}", e.getMessage());
+        }
 
         // Extract transcript segments - the text is in yt-formatted-string.segment-text
         // Inside ytd-transcript-segment-renderer elements
@@ -203,6 +229,24 @@ public class TranscriptService {
         int count = segments.count();
 
         logger.info("Found {} transcript segments", count);
+
+        // Debug: log first segment if available
+        if (count == 0) {
+            try {
+                // Log how many ytd-transcript-segment-renderer elements exist
+                int rendererCount = page.locator("ytd-transcript-segment-renderer").count();
+                logger.debug("Found {} ytd-transcript-segment-renderer elements", rendererCount);
+
+                // Log the innerHTML of the segment list for debugging
+                String innerHtml = (String) page.evaluate(
+                    "() => { const el = document.querySelector('ytd-transcript-segment-list-renderer #segments-container'); " +
+                    "return el ? el.innerHTML.substring(0, 1000) : 'NOT FOUND'; }"
+                );
+                logger.debug("Segment container HTML (first 1000 chars): {}", innerHtml);
+            } catch (Exception e) {
+                logger.debug("Could not get debug HTML: {}", e.getMessage());
+            }
+        }
 
         for (int i = 0; i < count; i++) {
             try {

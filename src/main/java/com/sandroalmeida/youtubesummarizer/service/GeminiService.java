@@ -23,7 +23,7 @@ public class GeminiService {
     @Value("${gemini.api.key}")
     private String apiKey;
 
-    @Value("${gemini.model:gemini-1.5-flash}")
+    @Value("${gemini.model:gemini-2.5-flash}")
     private String model;
 
     @Value("${gemini.api.url:https://generativelanguage.googleapis.com/v1beta/models}")
@@ -42,9 +42,16 @@ public class GeminiService {
         String prompt = buildSummarizationPrompt(transcript, videoTitle);
 
         try {
-            logger.info("Calling Gemini API for summarization...");
-
             String url = String.format("%s/%s:generateContent?key=%s", apiBaseUrl, model, apiKey);
+
+            // Log request details
+            logger.info("Calling Gemini API for summarization...");
+            logger.debug("=== GEMINI API REQUEST ===");
+            logger.debug("Model: {}", model);
+            logger.debug("API URL: {}/{}", apiBaseUrl, model);
+            logger.debug("Video Title: {}", videoTitle);
+            logger.debug("Transcript length: {} characters", transcript.length());
+            logger.debug("Prompt length: {} characters", prompt.length());
 
             // Build request body
             Map<String, Object> requestBody = Map.of(
@@ -57,10 +64,12 @@ public class GeminiService {
                 ),
                 "generationConfig", Map.of(
                     "temperature", 0.7,
-                    "maxOutputTokens", 1024,
+                    "maxOutputTokens", 2048,
                     "topP", 0.9
                 )
             );
+
+            logger.debug("Generation config: temperature=0.7, maxOutputTokens=2048, topP=0.9");
 
             String response = webClient.post()
                 .uri(url)
@@ -70,10 +79,14 @@ public class GeminiService {
                 .bodyToMono(String.class)
                 .block();
 
+            logger.debug("=== GEMINI API RESPONSE ===");
+            logger.debug("Raw response: {}", response);
+
             return parseGeminiResponse(response);
 
         } catch (Exception e) {
             logger.error("Failed to call Gemini API: {}", e.getMessage());
+            logger.debug("Exception details:", e);
             return "Failed to generate summary: " + e.getMessage();
         }
     }
@@ -115,27 +128,49 @@ public class GeminiService {
             // Check for errors
             if (root.has("error")) {
                 String errorMessage = root.path("error").path("message").asText("Unknown error");
-                logger.error("Gemini API error: {}", errorMessage);
+                String errorCode = root.path("error").path("code").asText("N/A");
+                logger.error("Gemini API error - Code: {}, Message: {}", errorCode, errorMessage);
+                logger.debug("Full error response: {}", response);
                 return "API Error: " + errorMessage;
+            }
+
+            // Log response metadata
+            if (root.has("usageMetadata")) {
+                JsonNode usage = root.path("usageMetadata");
+                logger.debug("Token usage - Prompt: {}, Response: {}, Total: {}",
+                    usage.path("promptTokenCount").asInt(0),
+                    usage.path("candidatesTokenCount").asInt(0),
+                    usage.path("totalTokenCount").asInt(0));
             }
 
             // Extract the generated text
             JsonNode candidates = root.path("candidates");
             if (candidates.isArray() && candidates.size() > 0) {
-                JsonNode content = candidates.get(0).path("content");
+                JsonNode candidate = candidates.get(0);
+
+                // Log finish reason
+                String finishReason = candidate.path("finishReason").asText("UNKNOWN");
+                logger.debug("Finish reason: {}", finishReason);
+
+                JsonNode content = candidate.path("content");
                 JsonNode parts = content.path("parts");
                 if (parts.isArray() && parts.size() > 0) {
                     String text = parts.get(0).path("text").asText("");
                     logger.info("Summary generated: {} characters", text.length());
+                    logger.debug("=== GENERATED SUMMARY ===");
+                    logger.debug("{}", text);
                     return text.trim();
                 }
             }
 
             logger.warn("Unexpected Gemini response format");
+            logger.debug("Response structure: {}", response);
             return "Failed to parse summary from API response.";
 
         } catch (Exception e) {
             logger.error("Failed to parse Gemini response: {}", e.getMessage());
+            logger.debug("Exception details:", e);
+            logger.debug("Raw response that failed to parse: {}", response);
             return "Failed to parse API response: " + e.getMessage();
         }
     }
