@@ -13,15 +13,18 @@ public class VideoActionService {
     private static final Logger logger = LoggerFactory.getLogger(VideoActionService.class);
 
     private final BrowserContext browserContext;
+    private final TranscriptService transcriptService;
+    private final GeminiService geminiService;
 
     @Value("${timeout.element.wait.ms:10000}")
     private int elementWaitTimeout;
 
-    @Value("${timeout.ai.response.ms:30000}")
-    private int aiResponseTimeout;
-
-    public VideoActionService(BrowserContext browserContext) {
+    public VideoActionService(BrowserContext browserContext,
+                              TranscriptService transcriptService,
+                              GeminiService geminiService) {
         this.browserContext = browserContext;
+        this.transcriptService = transcriptService;
+        this.geminiService = geminiService;
     }
 
     private Page getPage() {
@@ -32,91 +35,24 @@ public class VideoActionService {
         return browserContext.newPage();
     }
 
-    public String getAiSummary(String videoUrl) {
-        Page page = getPage();
-        String originalUrl = page.url();
+    public String getAiSummary(String videoUrl, String videoTitle) {
+        logger.info("Getting AI summary for: {}", videoUrl);
 
-        try {
-            logger.info("Getting AI summary for: {}", videoUrl);
+        // Step 1: Fetch the video transcript
+        String transcript = transcriptService.getTranscript(videoUrl);
 
-            // Navigate to video page
-            page.navigate(videoUrl);
-            page.waitForLoadState(LoadState.DOMCONTENTLOADED);
-            page.waitForTimeout(2000); // Wait for video page to fully load
-
-            // Click the more actions button (three dots menu)
-            Locator moreActionsBtn = page.locator("button[aria-label='More actions'], ytd-menu-renderer button#button").first();
-            moreActionsBtn.waitFor(new Locator.WaitForOptions().setTimeout(elementWaitTimeout));
-            moreActionsBtn.click();
-            page.waitForTimeout(500);
-
-            // Click "Ask" option in the menu
-            Locator askOption = page.locator("ytd-menu-service-item-renderer:has(yt-formatted-string:text('Ask'))").first();
-            if (askOption.count() == 0) {
-                // Try alternative selector
-                askOption = page.locator("tp-yt-paper-item:has-text('Ask')").first();
-            }
-            askOption.waitFor(new Locator.WaitForOptions().setTimeout(elementWaitTimeout));
-            askOption.click();
-            page.waitForTimeout(1000);
-
-            // Wait for AI panel to open
-            Locator aiPanel = page.locator("ytd-engagement-panel-section-list-renderer[target-id='PAyouchat']");
-            aiPanel.waitFor(new Locator.WaitForOptions().setTimeout(elementWaitTimeout));
-
-            // Click "Summarize the video" chip
-            Locator summarizeChip = page.locator("button.ytwYouChatChipsDataChip:has-text('Summarize')").first();
-            if (summarizeChip.count() == 0) {
-                summarizeChip = page.locator(".ytwYouChatChipsDataChip:has-text('Summarize')").first();
-            }
-            summarizeChip.waitFor(new Locator.WaitForOptions().setTimeout(elementWaitTimeout));
-            summarizeChip.click();
-
-            // Wait for AI response (this can take a while)
-            logger.info("Waiting for AI summary response...");
-            page.waitForTimeout(3000); // Initial wait
-
-            // Wait for the summary response to appear
-            Locator summaryResponse = page.locator("you-chat-item-view-model markdown-div p").last();
-            summaryResponse.waitFor(new Locator.WaitForOptions().setTimeout(aiResponseTimeout));
-
-            // Wait a bit more to ensure full response
-            page.waitForTimeout(2000);
-
-            // Extract all summary paragraphs
-            Locator allParagraphs = page.locator("you-chat-item-view-model markdown-div");
-            StringBuilder summary = new StringBuilder();
-
-            int count = allParagraphs.count();
-            for (int i = 0; i < count; i++) {
-                String text = allParagraphs.nth(i).textContent();
-                if (text != null && !text.isEmpty()
-                    && !text.contains("Hello! Curious")
-                    && !text.contains("Not sure what to ask")) {
-                    summary.append(text.trim()).append("\n\n");
-                }
-            }
-
-            String result = summary.toString().trim();
-            logger.info("AI summary extracted: {} characters", result.length());
-
-            // Close the AI panel
-            Locator closeBtn = page.locator("ytd-engagement-panel-title-header-renderer button[aria-label='Close']").first();
-            if (closeBtn.count() > 0) {
-                closeBtn.click();
-            }
-
-            return result.isEmpty() ? "Summary not available for this video." : result;
-
-        } catch (Exception e) {
-            logger.error("Failed to get AI summary: {}", e.getMessage());
-            return "Failed to get AI summary: " + e.getMessage();
-        } finally {
-            // Navigate back to original page
-            if (!originalUrl.contains("/watch")) {
-                page.navigate(originalUrl);
-            }
+        if (transcript == null || transcript.isEmpty()) {
+            logger.warn("No transcript available for video: {}", videoUrl);
+            return "No transcript available for this video. The video might not have captions enabled.";
         }
+
+        logger.info("Transcript fetched: {} characters", transcript.length());
+
+        // Step 2: Send transcript to Gemini for summarization
+        String summary = geminiService.summarize(transcript, videoTitle);
+
+        logger.info("Summary generated: {} characters", summary.length());
+        return summary;
     }
 
     public boolean saveToWatchLater(String videoUrl) {

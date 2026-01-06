@@ -167,7 +167,7 @@ async function openSummaryModal(videoUrl, title) {
         const response = await fetch('/api/summary', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ videoUrl })
+            body: JSON.stringify({ videoUrl, videoTitle: title })
         });
 
         if (!response.ok) throw new Error('Failed to get summary');

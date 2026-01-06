@@ -60,6 +60,7 @@ public class YouTubeController {
     @PostMapping("/summary")
     public ResponseEntity<Map<String, String>> getAiSummary(@RequestBody Map<String, String> request) {
         String videoUrl = request.get("videoUrl");
+        String videoTitle = request.get("videoTitle");
         logger.info("POST /api/summary for: {}", videoUrl);
 
         if (videoUrl == null || videoUrl.isEmpty()) {
@@ -67,7 +68,7 @@ public class YouTubeController {
         }
 
         try {
-            String summary = actionService.getAiSummary(videoUrl);
+            String summary = actionService.getAiSummary(videoUrl, videoTitle);
             Map<String, String> response = new HashMap<>();
             response.put("summary", summary);
             return ResponseEntity.ok(response);
