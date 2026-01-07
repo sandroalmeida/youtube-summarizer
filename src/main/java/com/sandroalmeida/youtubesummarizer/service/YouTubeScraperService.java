@@ -400,27 +400,39 @@ public class YouTubeScraperService {
             }
 
             // Wait for the avatar button to be available
-            Locator avatar = page.locator("button#avatar-btn, img.ytd-topbar-menu-button-renderer").first();
+            Locator avatar = page.locator("button#avatar-btn").first();
             avatar.waitFor(new Locator.WaitForOptions().setTimeout(elementWaitTimeout));
 
             if (avatar.count() > 0) {
+                logger.info("Clicking avatar button to open account menu...");
                 avatar.click();
-                page.waitForTimeout(500);
 
-                // Extract account info
-                Locator accountName = page.locator("#account-name").first();
-                Locator accountHandle = page.locator("#channel-handle").first();
+                // Wait for the popup menu to appear
+                Locator popup = page.locator("tp-yt-iron-dropdown ytd-multi-page-menu-renderer");
+                popup.waitFor(new Locator.WaitForOptions().setTimeout(elementWaitTimeout));
+
+                // Wait for account info elements inside the popup
+                Locator accountName = page.locator("ytd-active-account-header-renderer #account-name").first();
+                Locator accountHandle = page.locator("ytd-active-account-header-renderer #channel-handle").first();
+
+                // Wait for the account name to be visible
+                accountName.waitFor(new Locator.WaitForOptions().setTimeout(5000));
 
                 AccountInfo info = new AccountInfo();
                 if (accountName.count() > 0) {
-                    info.setName(accountName.textContent().trim());
+                    String name = accountName.textContent();
+                    info.setName(name != null ? name.trim() : "");
+                    logger.info("Found account name: {}", info.getName());
                 }
                 if (accountHandle.count() > 0) {
-                    info.setHandle(accountHandle.textContent().trim());
+                    String handle = accountHandle.textContent();
+                    info.setHandle(handle != null ? handle.trim() : "");
+                    logger.info("Found account handle: {}", info.getHandle());
                 }
 
                 // Close the menu by pressing Escape
                 page.keyboard().press("Escape");
+                page.waitForTimeout(300);
 
                 cachedAccountInfo = info;
                 logger.info("Account info: {} ({})", info.getName(), info.getHandle());
