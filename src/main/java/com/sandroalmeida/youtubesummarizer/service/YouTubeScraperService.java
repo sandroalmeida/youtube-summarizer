@@ -35,9 +35,40 @@ public class YouTubeScraperService {
 
     private Page currentPage;
     private AccountInfo cachedAccountInfo;
+    private boolean initialized = false;
 
     public YouTubeScraperService(BrowserContext browserContext) {
         this.browserContext = browserContext;
+    }
+
+    /**
+     * Preload YouTube page on application startup.
+     * This ensures the browser is ready when the first request comes in.
+     */
+    public void preloadYouTube() {
+        if (initialized) {
+            return;
+        }
+
+        logger.info("Preloading YouTube...");
+        try {
+            Page page = getOrCreatePage();
+            String currentUrl = page.url();
+
+            // Navigate to YouTube if not already there
+            if (!currentUrl.startsWith("https://www.youtube.com")) {
+                logger.info("Navigating to YouTube subscriptions page for preload...");
+                page.navigate(youtubeSubscriptionsUrl);
+                page.waitForLoadState(LoadState.NETWORKIDLE);
+                logger.info("YouTube preloaded successfully");
+            } else {
+                logger.info("Already on YouTube: {}", currentUrl);
+            }
+
+            initialized = true;
+        } catch (Exception e) {
+            logger.warn("Failed to preload YouTube: {}", e.getMessage());
+        }
     }
 
     private Page getOrCreatePage() {
@@ -242,6 +273,9 @@ public class YouTubeScraperService {
     private VideoInfo extractVideoInfo(Locator item) {
         VideoInfo video = new VideoInfo();
 
+        // Scroll the video into view to trigger lazy loading of thumbnail
+        item.scrollIntoViewIfNeeded();
+
         // Extract video URL and ID
         Locator thumbnailLink = item.locator("a#thumbnail, a[href*='/watch']").first();
         if (thumbnailLink.count() > 0) {
@@ -252,12 +286,30 @@ public class YouTubeScraperService {
             }
         }
 
-        // Extract thumbnail
+        // Extract thumbnail - wait a bit for lazy loading to complete
         Locator thumbnail = item.locator("yt-image img, ytd-thumbnail img, yt-thumbnail-view-model img").first();
         if (thumbnail.count() > 0) {
+            // Try to get a valid image URL (not a placeholder)
             String src = thumbnail.getAttribute("src");
-            if (src != null && !src.isEmpty()) {
+
+            // If src is empty or a data URL placeholder, wait and retry
+            if (src == null || src.isEmpty() || src.startsWith("data:")) {
+                try {
+                    Thread.sleep(100);
+                    src = thumbnail.getAttribute("src");
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+
+            if (src != null && !src.isEmpty() && !src.startsWith("data:")) {
                 video.setThumbnailUrl(src);
+            } else {
+                // Fallback: construct thumbnail URL from video ID
+                String videoId = video.getVideoId();
+                if (videoId != null) {
+                    video.setThumbnailUrl("https://i.ytimg.com/vi/" + videoId + "/hqdefault.jpg");
+                }
             }
         }
 
@@ -339,8 +391,18 @@ public class YouTubeScraperService {
         Page page = getOrCreatePage();
 
         try {
-            // Click on avatar to open account menu
+            // Ensure we're on YouTube first
+            String currentUrl = page.url();
+            if (!currentUrl.startsWith("https://www.youtube.com")) {
+                logger.info("Not on YouTube, navigating to get account info...");
+                page.navigate(youtubeHomeUrl);
+                page.waitForLoadState(LoadState.NETWORKIDLE);
+            }
+
+            // Wait for the avatar button to be available
             Locator avatar = page.locator("button#avatar-btn, img.ytd-topbar-menu-button-renderer").first();
+            avatar.waitFor(new Locator.WaitForOptions().setTimeout(elementWaitTimeout));
+
             if (avatar.count() > 0) {
                 avatar.click();
                 page.waitForTimeout(500);
