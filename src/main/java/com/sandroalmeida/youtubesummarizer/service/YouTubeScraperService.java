@@ -54,31 +54,67 @@ public class YouTubeScraperService {
         return currentPage;
     }
 
+    private String currentTab = null;
+
     public List<VideoInfo> scrapeVideos(String tab, int pageNum) {
         Page page = getOrCreatePage();
         String targetUrl = "subscriptions".equalsIgnoreCase(tab) ? youtubeSubscriptionsUrl : youtubeHomeUrl;
 
         logger.info("Scraping {} videos from: {}", tab, targetUrl);
 
-        // Navigate to the target page if not already there
-        if (!page.url().startsWith(targetUrl.replace("/feed/subscriptions", ""))) {
+        // Always navigate when tab changes or URL doesn't match exactly
+        boolean needsNavigation = !tab.equalsIgnoreCase(currentTab) || !isOnCorrectUrl(page, targetUrl);
+
+        if (needsNavigation) {
+            logger.info("Navigating to {} (current URL: {})", targetUrl, page.url());
             page.navigate(targetUrl);
             page.waitForLoadState(LoadState.NETWORKIDLE);
-        } else if (!page.url().equals(targetUrl)) {
-            page.navigate(targetUrl);
-            page.waitForLoadState(LoadState.NETWORKIDLE);
+            currentTab = tab;
         }
 
-        // Wait for video items to load
-        page.waitForSelector("ytd-rich-item-renderer",
-            new Page.WaitForSelectorOptions().setTimeout(elementWaitTimeout));
+        // Retry mechanism: try up to 3 times to load videos
+        int maxRetries = 3;
+        int retryDelayMs = 2000;
+        List<VideoInfo> videos = new ArrayList<>();
 
-        // Scroll to load more videos if needed
-        int totalVideosNeeded = (pageNum + 1) * videosPerPage;
-        scrollToLoadVideos(page, totalVideosNeeded);
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                logger.info("Attempt {}/{} to load videos", attempt, maxRetries);
 
-        // Extract videos
-        List<VideoInfo> videos = extractVideos(page);
+                // Wait for video items to load
+                page.waitForSelector("ytd-rich-item-renderer",
+                    new Page.WaitForSelectorOptions().setTimeout(elementWaitTimeout));
+
+                // Scroll to load more videos if needed
+                int totalVideosNeeded = (pageNum + 1) * videosPerPage;
+                scrollToLoadVideos(page, totalVideosNeeded);
+
+                // Extract videos
+                videos = extractVideos(page);
+
+                if (!videos.isEmpty()) {
+                    logger.info("Successfully loaded {} videos on attempt {}", videos.size(), attempt);
+                    break;
+                }
+
+                // If no videos found, wait and retry
+                if (attempt < maxRetries) {
+                    logger.warn("No videos found, retrying in {}ms...", retryDelayMs);
+                    page.waitForTimeout(retryDelayMs);
+                    // Refresh the page on retry
+                    page.reload();
+                    page.waitForLoadState(LoadState.NETWORKIDLE);
+                }
+            } catch (Exception e) {
+                logger.warn("Attempt {} failed: {}", attempt, e.getMessage());
+                if (attempt < maxRetries) {
+                    page.waitForTimeout(retryDelayMs);
+                    // Re-navigate on error
+                    page.navigate(targetUrl);
+                    page.waitForLoadState(LoadState.NETWORKIDLE);
+                }
+            }
+        }
 
         // Return the requested page of videos
         int startIndex = pageNum * videosPerPage;
@@ -89,6 +125,17 @@ public class YouTubeScraperService {
         }
 
         return videos.subList(startIndex, endIndex);
+    }
+
+    private boolean isOnCorrectUrl(Page page, String targetUrl) {
+        String currentUrl = page.url();
+        // For home, check if on youtube.com but NOT on subscriptions
+        if (targetUrl.equals(youtubeHomeUrl)) {
+            return currentUrl.startsWith("https://www.youtube.com")
+                && !currentUrl.contains("/feed/subscriptions");
+        }
+        // For subscriptions, check if exactly on subscriptions page
+        return currentUrl.startsWith(targetUrl);
     }
 
     private void scrollToLoadVideos(Page page, int targetCount) {
