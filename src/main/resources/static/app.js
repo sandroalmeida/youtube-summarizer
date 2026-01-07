@@ -3,6 +3,16 @@ let currentTab = 'subscriptions';
 let currentPage = 0;
 let isLoading = false;
 
+// Client-side video cache for instant tab switching
+const videoCache = {
+    subscriptions: { videos: [], pagesLoaded: 0 },
+    home: { videos: [], pagesLoaded: 0 }
+};
+
+// Summary cache key prefix for localStorage
+const SUMMARY_CACHE_PREFIX = 'yt_summary_';
+const SUMMARY_CACHE_TTL_DAYS = 7;
+
 // DOM Elements
 const videoGrid = document.getElementById('video-grid');
 const loading = document.getElementById('loading');
@@ -13,16 +23,18 @@ const summaryTitle = document.getElementById('summary-title');
 const summaryLoading = document.getElementById('summary-loading');
 const summaryText = document.getElementById('summary-text');
 const tabs = document.querySelectorAll('.tab');
+const refreshBtn = document.getElementById('refresh-btn');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     loadAccountInfo();
     loadVideos();
     setupEventListeners();
+    cleanupExpiredSummaries();
 });
 
 function setupEventListeners() {
-    // Tab switching
+    // Tab switching - use cache for instant switching
     tabs.forEach(tab => {
         tab.addEventListener('click', () => {
             const newTab = tab.dataset.tab;
@@ -31,17 +43,30 @@ function setupEventListeners() {
                 tab.classList.add('active');
                 currentTab = newTab;
                 currentPage = 0;
-                videoGrid.innerHTML = '';
-                loadVideos();
+
+                // Try to render from cache first
+                if (videoCache[newTab].videos.length > 0) {
+                    renderVideosFromCache(newTab);
+                } else {
+                    videoGrid.innerHTML = '';
+                    loadVideos();
+                }
             }
         });
     });
 
-    // Load more
+    // Load more - always fetch from server
     loadMoreBtn.addEventListener('click', () => {
         currentPage++;
         loadVideos(true);
     });
+
+    // Refresh button - force refresh from server
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+            forceRefresh();
+        });
+    }
 
     // Close modal
     document.querySelector('.close-modal').addEventListener('click', closeModal);
@@ -51,6 +76,44 @@ function setupEventListeners() {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') closeModal();
     });
+}
+
+// Render videos from client-side cache (instant tab switching)
+function renderVideosFromCache(tab) {
+    const cache = videoCache[tab];
+    videoGrid.innerHTML = '';
+
+    cache.videos.forEach(video => {
+        videoGrid.appendChild(createVideoCard(video));
+    });
+
+    // Update page counter to match cache
+    currentPage = cache.pagesLoaded - 1;
+    loadMoreBtn.classList.remove('hidden');
+
+    console.log(`Rendered ${cache.videos.length} videos from cache for tab: ${tab}`);
+}
+
+// Force refresh - clear cache and reload
+async function forceRefresh() {
+    // Clear client-side cache for current tab
+    videoCache[currentTab] = { videos: [], pagesLoaded: 0 };
+    currentPage = 0;
+    videoGrid.innerHTML = '';
+
+    // Show loading and set refresh button state
+    if (refreshBtn) {
+        refreshBtn.disabled = true;
+        refreshBtn.classList.add('refreshing');
+    }
+
+    // Fetch with forceRefresh=true to bypass server cache
+    await loadVideos(false, true);
+
+    if (refreshBtn) {
+        refreshBtn.disabled = false;
+        refreshBtn.classList.remove('refreshing');
+    }
 }
 
 async function loadAccountInfo() {
@@ -68,7 +131,7 @@ async function loadAccountInfo() {
     }
 }
 
-async function loadVideos(append = false) {
+async function loadVideos(append = false, forceRefresh = false) {
     if (isLoading) return;
     isLoading = true;
 
@@ -78,10 +141,25 @@ async function loadVideos(append = false) {
     }
 
     try {
-        const response = await fetch(`/api/videos?tab=${currentTab}&page=${currentPage}`);
+        // Build URL with forceRefresh parameter
+        let url = `/api/videos?tab=${currentTab}&page=${currentPage}`;
+        if (forceRefresh) {
+            url += '&forceRefresh=true';
+        }
+
+        const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to load videos');
 
         const videos = await response.json();
+
+        // Update client-side cache
+        if (!append || forceRefresh) {
+            videoCache[currentTab].videos = [...videos];
+            videoCache[currentTab].pagesLoaded = 1;
+        } else {
+            videoCache[currentTab].videos.push(...videos);
+            videoCache[currentTab].pagesLoaded = currentPage + 1;
+        }
 
         if (!append) {
             videoGrid.innerHTML = '';
@@ -97,6 +175,8 @@ async function loadVideos(append = false) {
         } else {
             loadMoreBtn.classList.add('hidden');
         }
+
+        console.log(`Loaded ${videos.length} videos, cache now has ${videoCache[currentTab].videos.length} total`);
 
     } catch (error) {
         console.error('Failed to load videos:', error);
@@ -119,6 +199,10 @@ async function loadVideos(append = false) {
 function createVideoCard(video) {
     const card = document.createElement('div');
     card.className = 'video-card';
+
+    // Check if summary is cached
+    const hasCachedSummary = getCachedSummary(video.videoUrl) !== null;
+
     card.innerHTML = `
         <div class="thumbnail-container">
             <img class="thumbnail" src="${video.thumbnailUrl || ''}" alt="${video.title || ''}" loading="lazy">
@@ -129,7 +213,9 @@ function createVideoCard(video) {
             <p class="channel-name">${video.channelName || ''}</p>
         </div>
         <div class="card-actions">
-            <button class="action-btn summary-btn" data-video-url="${video.videoUrl}" data-title="${escapeHtml(video.title)}">AI Summary</button>
+            <button class="action-btn summary-btn ${hasCachedSummary ? 'has-cache' : ''}" data-video-url="${video.videoUrl}" data-title="${escapeHtml(video.title)}">
+                ${hasCachedSummary ? 'AI Summary (cached)' : 'AI Summary'}
+            </button>
             <button class="action-btn save-btn" data-video-url="${video.videoUrl}">Save</button>
         </div>
     `;
@@ -156,12 +242,87 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// ==================== Summary Caching (localStorage) ====================
+
+function getCachedSummary(videoUrl) {
+    try {
+        const key = SUMMARY_CACHE_PREFIX + btoa(videoUrl);
+        const cached = localStorage.getItem(key);
+        if (!cached) return null;
+
+        const { summary, timestamp } = JSON.parse(cached);
+        const ageInDays = (Date.now() - timestamp) / (1000 * 60 * 60 * 24);
+
+        if (ageInDays >= SUMMARY_CACHE_TTL_DAYS) {
+            localStorage.removeItem(key);
+            return null;
+        }
+
+        return summary;
+    } catch (e) {
+        console.error('Error reading summary cache:', e);
+        return null;
+    }
+}
+
+function cacheSummary(videoUrl, summary) {
+    try {
+        const key = SUMMARY_CACHE_PREFIX + btoa(videoUrl);
+        const data = {
+            summary,
+            timestamp: Date.now()
+        };
+        localStorage.setItem(key, JSON.stringify(data));
+    } catch (e) {
+        console.error('Error caching summary:', e);
+    }
+}
+
+function cleanupExpiredSummaries() {
+    try {
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith(SUMMARY_CACHE_PREFIX)) {
+                const cached = localStorage.getItem(key);
+                if (cached) {
+                    const { timestamp } = JSON.parse(cached);
+                    const ageInDays = (Date.now() - timestamp) / (1000 * 60 * 60 * 24);
+                    if (ageInDays >= SUMMARY_CACHE_TTL_DAYS) {
+                        keysToRemove.push(key);
+                    }
+                }
+            }
+        }
+        keysToRemove.forEach(key => localStorage.removeItem(key));
+        if (keysToRemove.length > 0) {
+            console.log(`Cleaned up ${keysToRemove.length} expired summary cache entries`);
+        }
+    } catch (e) {
+        console.error('Error cleaning up summary cache:', e);
+    }
+}
+
+// ==================== Summary Modal ====================
+
 async function openSummaryModal(videoUrl, title) {
     summaryTitle.textContent = title || 'Video Summary';
-    summaryLoading.classList.remove('hidden');
     summaryText.classList.add('hidden');
     summaryText.textContent = '';
     summaryModal.classList.add('active');
+
+    // Check localStorage cache first
+    const cachedSummary = getCachedSummary(videoUrl);
+    if (cachedSummary) {
+        console.log('Summary loaded from localStorage cache');
+        summaryText.textContent = cachedSummary;
+        summaryText.classList.remove('hidden');
+        summaryLoading.classList.add('hidden');
+        return;
+    }
+
+    // Not in cache - fetch from server
+    summaryLoading.classList.remove('hidden');
 
     try {
         const response = await fetch('/api/summary', {
@@ -173,7 +334,14 @@ async function openSummaryModal(videoUrl, title) {
         if (!response.ok) throw new Error('Failed to get summary');
 
         const data = await response.json();
-        summaryText.textContent = data.summary || 'No summary available.';
+        const summary = data.summary || 'No summary available.';
+
+        // Cache the summary
+        if (summary && summary !== 'No summary available.') {
+            cacheSummary(videoUrl, summary);
+        }
+
+        summaryText.textContent = summary;
         summaryText.classList.remove('hidden');
 
     } catch (error) {

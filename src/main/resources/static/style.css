@@ -316,3 +316,65 @@ main {
 .summary-text.hidden {
     display: none;
 }
+
+/* Refresh Button */
+.refresh-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: none;
+    background-color: #303030;
+    color: #f1f1f1;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.2s;
+    margin-left: 8px;
+}
+
+.refresh-btn:hover {
+    background-color: #3f3f3f;
+}
+
+.refresh-btn:active {
+    transform: scale(0.95);
+}
+
+.refresh-btn.refreshing {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.refresh-btn.refreshing svg {
+    animation: spin 1s linear infinite;
+}
+
+.refresh-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+/* Summary button cache indicator */
+.summary-btn.has-cache {
+    background-color: #2e7d32;
+    color: #fff;
+}
+
+.summary-btn.has-cache:hover {
+    background-color: #388e3c;
+}
+
+/* Error message */
+.error-message {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 48px;
+    color: #aaa;
+}
+
+.error-message p:first-child {
+    color: #f1f1f1;
+    font-size: 16px;
+    margin-bottom: 8px;
+}
