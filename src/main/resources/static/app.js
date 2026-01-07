@@ -214,38 +214,147 @@ function createVideoCard(video) {
     card.className = 'video-card';
 
     // Check if summary is cached
-    const hasCachedSummary = getCachedSummary(video.videoUrl) !== null;
+    const cachedSummary = getCachedSummary(video.videoUrl);
+    const hasCachedSummary = cachedSummary !== null;
 
     card.innerHTML = `
-        <div class="thumbnail-container">
-            <img class="thumbnail" src="${video.thumbnailUrl || ''}" alt="${video.title || ''}" loading="lazy">
-            ${video.duration ? `<span class="duration">${video.duration}</span>` : ''}
-        </div>
-        <div class="video-info">
-            <h3 class="video-title">${video.title || 'Untitled'}</h3>
-            <p class="channel-name">${video.channelName || ''}</p>
-        </div>
-        <div class="card-actions">
-            <button class="action-btn summary-btn ${hasCachedSummary ? 'has-cache' : ''}" data-video-url="${video.videoUrl}" data-title="${escapeHtml(video.title)}">
-                ${hasCachedSummary ? 'AI Summary (cached)' : 'AI Summary'}
-            </button>
-            <button class="action-btn save-btn" data-video-url="${video.videoUrl}">Save</button>
+        <div class="card-inner">
+            <!-- Front face - Video info -->
+            <div class="card-front">
+                <div class="thumbnail-container">
+                    <img class="thumbnail" src="${video.thumbnailUrl || ''}" alt="${video.title || ''}" loading="lazy">
+                    ${video.duration ? `<span class="duration">${video.duration}</span>` : ''}
+                </div>
+                <div class="video-info">
+                    <h3 class="video-title">${video.title || 'Untitled'}</h3>
+                    <p class="channel-name">${video.channelName || ''}</p>
+                </div>
+                <div class="card-actions">
+                    <button class="action-btn summary-btn ${hasCachedSummary ? 'has-cache' : ''}"
+                            data-video-url="${video.videoUrl}"
+                            data-title="${escapeHtml(video.title)}">
+                        ${hasCachedSummary ? 'View Summary' : 'AI Summary'}
+                    </button>
+                    <button class="action-btn save-btn" data-video-url="${video.videoUrl}">Save</button>
+                </div>
+            </div>
+            <!-- Back face - Summary -->
+            <div class="card-back">
+                <div class="summary-header">
+                    <h4 class="summary-card-title">${truncateText(video.title || 'Summary', 50)}</h4>
+                    <button class="flip-back-btn" title="Back to video">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M19 12H5M12 19l-7-7 7-7"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="summary-preview"></div>
+                <button class="expand-summary-btn" data-video-url="${video.videoUrl}" data-title="${escapeHtml(video.title)}">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+                    </svg>
+                    Expand
+                </button>
+            </div>
         </div>
     `;
 
-    // Summary button click
-    card.querySelector('.summary-btn').addEventListener('click', (e) => {
+    // Summary button click - load summary and flip card
+    const summaryBtn = card.querySelector('.summary-btn');
+    summaryBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        openSummaryModal(e.target.dataset.videoUrl, e.target.dataset.title);
+        loadSummaryAndFlip(card, video.videoUrl, video.title);
+    });
+
+    // Flip back button
+    card.querySelector('.flip-back-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        card.classList.remove('flipped');
+    });
+
+    // Expand button - open modal with full summary
+    card.querySelector('.expand-summary-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const summary = card.querySelector('.summary-preview').dataset.fullSummary;
+        openSummaryModal(video.title, summary);
     });
 
     // Save button click
     card.querySelector('.save-btn').addEventListener('click', (e) => {
         e.stopPropagation();
-        saveToWatchLater(e.target, e.target.dataset.videoUrl);
+        saveToWatchLater(e.target, video.videoUrl);
     });
 
+    // If summary is already cached, pre-populate the back
+    if (hasCachedSummary) {
+        const previewEl = card.querySelector('.summary-preview');
+        previewEl.textContent = truncateText(cachedSummary, 300);
+        previewEl.dataset.fullSummary = cachedSummary;
+    }
+
     return card;
+}
+
+// Load summary and flip the card
+async function loadSummaryAndFlip(card, videoUrl, title) {
+    const summaryBtn = card.querySelector('.summary-btn');
+    const previewEl = card.querySelector('.summary-preview');
+
+    // Check cache first
+    const cachedSummary = getCachedSummary(videoUrl);
+    if (cachedSummary) {
+        previewEl.textContent = truncateText(cachedSummary, 300);
+        previewEl.dataset.fullSummary = cachedSummary;
+        card.classList.add('flipped');
+        return;
+    }
+
+    // Show loading state on button
+    const originalText = summaryBtn.textContent;
+    summaryBtn.disabled = true;
+    summaryBtn.innerHTML = '<span class="btn-spinner"></span> Loading...';
+
+    try {
+        const response = await fetch('/api/summary', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ videoUrl, videoTitle: title })
+        });
+
+        if (!response.ok) throw new Error('Failed to get summary');
+
+        const data = await response.json();
+        const summary = data.summary || 'No summary available.';
+
+        // Cache the summary
+        if (summary && summary !== 'No summary available.') {
+            cacheSummary(videoUrl, summary);
+        }
+
+        // Update the back of the card
+        previewEl.textContent = truncateText(summary, 300);
+        previewEl.dataset.fullSummary = summary;
+
+        // Flip the card
+        card.classList.add('flipped');
+
+        // Update button to show it has cache now
+        summaryBtn.classList.add('has-cache');
+        summaryBtn.textContent = 'View Summary';
+
+    } catch (error) {
+        console.error('Failed to get AI summary:', error);
+        summaryBtn.textContent = originalText;
+        alert('Failed to get AI summary. Please try again.');
+    } finally {
+        summaryBtn.disabled = false;
+    }
+}
+
+function truncateText(text, maxLength) {
+    if (!text) return '';
+    if (text.length <= maxLength) return text;
+    return text.substring(0, maxLength).trim() + '...';
 }
 
 function escapeHtml(text) {
@@ -316,54 +425,14 @@ function cleanupExpiredSummaries() {
     }
 }
 
-// ==================== Summary Modal ====================
+// ==================== Summary Modal (for expanded view) ====================
 
-async function openSummaryModal(videoUrl, title) {
+function openSummaryModal(title, summary) {
     summaryTitle.textContent = title || 'Video Summary';
-    summaryText.classList.add('hidden');
-    summaryText.textContent = '';
+    summaryText.textContent = summary || 'No summary available.';
+    summaryText.classList.remove('hidden');
+    summaryLoading.classList.add('hidden');
     summaryModal.classList.add('active');
-
-    // Check localStorage cache first
-    const cachedSummary = getCachedSummary(videoUrl);
-    if (cachedSummary) {
-        console.log('Summary loaded from localStorage cache');
-        summaryText.textContent = cachedSummary;
-        summaryText.classList.remove('hidden');
-        summaryLoading.classList.add('hidden');
-        return;
-    }
-
-    // Not in cache - fetch from server
-    summaryLoading.classList.remove('hidden');
-
-    try {
-        const response = await fetch('/api/summary', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ videoUrl, videoTitle: title })
-        });
-
-        if (!response.ok) throw new Error('Failed to get summary');
-
-        const data = await response.json();
-        const summary = data.summary || 'No summary available.';
-
-        // Cache the summary
-        if (summary && summary !== 'No summary available.') {
-            cacheSummary(videoUrl, summary);
-        }
-
-        summaryText.textContent = summary;
-        summaryText.classList.remove('hidden');
-
-    } catch (error) {
-        console.error('Failed to get AI summary:', error);
-        summaryText.textContent = 'Failed to get AI summary. Please try again.';
-        summaryText.classList.remove('hidden');
-    } finally {
-        summaryLoading.classList.add('hidden');
-    }
 }
 
 function closeModal() {

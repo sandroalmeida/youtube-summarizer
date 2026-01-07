@@ -96,16 +96,13 @@ main {
 }
 
 .video-card {
-    background-color: #212121;
-    border-radius: 12px;
-    overflow: hidden;
-    cursor: pointer;
-    transition: transform 0.2s, box-shadow 0.2s;
     position: relative;
+    cursor: pointer;
+    perspective: 1000px;
+    height: 320px;
 }
 
-.video-card:hover {
-    transform: translateY(-4px);
+.video-card:hover .card-front {
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
@@ -402,4 +399,139 @@ main {
     color: #f1f1f1;
     font-size: 16px;
     margin-bottom: 8px;
+}
+
+/* ==================== Card Flip Animation ==================== */
+
+.card-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-style: preserve-3d;
+}
+
+.video-card.flipped .card-inner {
+    transform: rotateY(180deg);
+}
+
+.card-front,
+.card-back {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.card-front {
+    background-color: #212121;
+    display: flex;
+    flex-direction: column;
+    transition: box-shadow 0.2s;
+}
+
+.card-back {
+    background-color: #1a1a2e;
+    transform: rotateY(180deg);
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+}
+
+/* Summary Back Content */
+.summary-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 12px;
+    gap: 8px;
+}
+
+.summary-card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #f1f1f1;
+    line-height: 1.3;
+    flex: 1;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.flip-back-btn {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #f1f1f1;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s;
+}
+
+.flip-back-btn:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+.summary-preview {
+    flex: 1;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #ccc;
+    overflow-y: auto;
+    padding-right: 4px;
+    margin-bottom: 12px;
+}
+
+/* Custom scrollbar for summary preview */
+.summary-preview::-webkit-scrollbar {
+    width: 4px;
+}
+
+.summary-preview::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 2px;
+}
+
+.summary-preview::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+}
+
+.summary-preview::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.expand-summary-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px;
+    border: none;
+    background-color: #3ea6ff;
+    color: #0f0f0f;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: background-color 0.2s;
+}
+
+.expand-summary-btn:hover {
+    background-color: #65b8ff;
+}
+
+/* Loading state for summary button */
+.summary-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.8;
 }
