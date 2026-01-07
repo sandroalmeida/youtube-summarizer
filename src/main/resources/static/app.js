@@ -61,6 +61,9 @@ function setupEventListeners() {
         loadVideos(true);
     });
 
+    // Store original button text
+    loadMoreBtn.dataset.originalText = loadMoreBtn.textContent;
+
     // Refresh button - force refresh from server
     if (refreshBtn) {
         refreshBtn.addEventListener('click', () => {
@@ -138,6 +141,11 @@ async function loadVideos(append = false, forceRefresh = false) {
     if (!append) {
         loading.classList.remove('hidden');
         loadMoreBtn.classList.add('hidden');
+    } else {
+        // Show loading state on Load More button
+        loadMoreBtn.disabled = true;
+        loadMoreBtn.classList.add('loading');
+        loadMoreBtn.innerHTML = '<span class="btn-spinner"></span> Loading...';
     }
 
     try {
@@ -193,6 +201,11 @@ async function loadVideos(append = false, forceRefresh = false) {
     } finally {
         loading.classList.add('hidden');
         isLoading = false;
+
+        // Reset Load More button state
+        loadMoreBtn.disabled = false;
+        loadMoreBtn.classList.remove('loading');
+        loadMoreBtn.textContent = loadMoreBtn.dataset.originalText || 'Load More';
     }
 }
 
