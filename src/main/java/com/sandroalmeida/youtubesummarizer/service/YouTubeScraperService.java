@@ -404,12 +404,18 @@ public class YouTubeScraperService {
 
         video.setChannelName(channelName != null ? channelName.trim() : "");
 
-        // Extract duration
-        Locator duration = item.locator("badge-shape .yt-badge-shape, ytd-thumbnail-overlay-time-status-renderer span").first();
+        // Extract duration - target the default badge (not LIVE badge)
+        Locator duration = item.locator(
+            "badge-shape.yt-badge-shape--thumbnail-default .yt-badge-shape__text, " +
+            "yt-thumbnail-overlay-badge-view-model badge-shape .yt-badge-shape__text, " +
+            "ytd-thumbnail-overlay-time-status-renderer span"
+        ).first();
         if (duration.count() > 0) {
             String durationText = duration.textContent();
-            if (durationText != null) {
-                video.setDuration(durationText.trim());
+            if (durationText != null && !durationText.trim().isEmpty()) {
+                // Clean up the duration text (remove extra whitespace)
+                String cleanDuration = durationText.trim().replaceAll("\\s+", "");
+                video.setDuration(cleanDuration);
             }
         }
 
