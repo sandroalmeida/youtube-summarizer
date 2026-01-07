@@ -309,8 +309,14 @@ public class YouTubeScraperService {
     private VideoInfo extractVideoInfo(Locator item) {
         VideoInfo video = new VideoInfo();
 
-        // Scroll the video into view to trigger lazy loading of thumbnail
-        item.scrollIntoViewIfNeeded();
+        // Try to scroll the video into view to trigger lazy loading of thumbnail
+        // Use a short timeout (2 seconds) to avoid long waits for virtualized/offscreen elements
+        try {
+            item.scrollIntoViewIfNeeded(new Locator.ScrollIntoViewIfNeededOptions().setTimeout(2000));
+        } catch (Exception e) {
+            // Element may be virtualized/offscreen - continue anyway and use fallback thumbnail
+            logger.trace("Could not scroll video into view (virtualized): {}", e.getMessage());
+        }
 
         // Extract video URL and ID
         Locator thumbnailLink = item.locator("a#thumbnail, a[href*='/watch']").first();
