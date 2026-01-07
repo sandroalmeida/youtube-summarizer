@@ -20,6 +20,7 @@ public class YouTubeScraperService {
     private static final Logger logger = LoggerFactory.getLogger(YouTubeScraperService.class);
 
     private final BrowserContext browserContext;
+    private final VideoCacheService cacheService;
 
     @Value("${youtube.home.url:https://www.youtube.com/}")
     private String youtubeHomeUrl;
@@ -37,8 +38,9 @@ public class YouTubeScraperService {
     private AccountInfo cachedAccountInfo;
     private boolean initialized = false;
 
-    public YouTubeScraperService(BrowserContext browserContext) {
+    public YouTubeScraperService(BrowserContext browserContext, VideoCacheService cacheService) {
         this.browserContext = browserContext;
+        this.cacheService = cacheService;
     }
 
     /**
@@ -87,7 +89,41 @@ public class YouTubeScraperService {
 
     private String currentTab = null;
 
-    public List<VideoInfo> scrapeVideos(String tab, int pageNum) {
+    /**
+     * Get videos for a tab and page, using cache when available.
+     * @param tab The tab (home or subscriptions)
+     * @param pageNum The page number (0-indexed)
+     * @param forceRefresh If true, bypass cache and re-scrape
+     * @return List of videos for the requested page
+     */
+    public List<VideoInfo> getVideos(String tab, int pageNum, boolean forceRefresh) {
+        // Check cache first (unless force refresh)
+        if (!forceRefresh) {
+            var cached = cacheService.getVideos(tab, pageNum);
+            if (cached.isPresent()) {
+                return cached.get();
+            }
+        } else {
+            // Force refresh means invalidate this tab's cache
+            cacheService.invalidateTab(tab);
+        }
+
+        // Cache miss or force refresh - scrape from YouTube
+        List<VideoInfo> videos = scrapeVideos(tab, pageNum);
+
+        // Cache the results
+        if (!videos.isEmpty()) {
+            cacheService.cacheVideos(tab, pageNum, videos);
+        }
+
+        return videos;
+    }
+
+    /**
+     * Scrape videos directly from YouTube (bypasses cache).
+     * Used internally and for cache population.
+     */
+    List<VideoInfo> scrapeVideos(String tab, int pageNum) {
         Page page = getOrCreatePage();
         String targetUrl = "subscriptions".equalsIgnoreCase(tab) ? youtubeSubscriptionsUrl : youtubeHomeUrl;
 

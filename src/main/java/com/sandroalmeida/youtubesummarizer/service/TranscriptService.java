@@ -16,12 +16,14 @@ public class TranscriptService {
     private static final Logger logger = LoggerFactory.getLogger(TranscriptService.class);
 
     private final BrowserContext browserContext;
+    private final VideoCacheService cacheService;
 
     @Value("${timeout.element.wait.ms:10000}")
     private int elementWaitTimeout;
 
-    public TranscriptService(BrowserContext browserContext) {
+    public TranscriptService(BrowserContext browserContext, VideoCacheService cacheService) {
         this.browserContext = browserContext;
+        this.cacheService = cacheService;
     }
 
     private Page getPage() {
@@ -33,6 +35,13 @@ public class TranscriptService {
     }
 
     public String getTranscript(String videoUrl) {
+        // Check cache first
+        var cachedTranscript = cacheService.getTranscript(videoUrl);
+        if (cachedTranscript.isPresent()) {
+            logger.info("Returning cached transcript for: {}", videoUrl);
+            return cachedTranscript.get();
+        }
+
         Page page = getPage();
         String originalUrl = page.url();
 
@@ -104,7 +113,14 @@ public class TranscriptService {
             }
 
             // Step 4: Extract transcript text
-            return extractTranscriptText(page);
+            String transcript = extractTranscriptText(page);
+
+            // Cache the transcript if successfully extracted
+            if (transcript != null && !transcript.isEmpty()) {
+                cacheService.cacheTranscript(videoUrl, transcript);
+            }
+
+            return transcript;
 
         } catch (Exception e) {
             logger.error("Failed to get transcript: {}", e.getMessage(), e);

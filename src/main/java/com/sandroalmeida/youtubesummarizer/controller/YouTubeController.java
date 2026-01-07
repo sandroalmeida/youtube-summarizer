@@ -3,6 +3,7 @@ package com.sandroalmeida.youtubesummarizer.controller;
 import com.sandroalmeida.youtubesummarizer.model.AccountInfo;
 import com.sandroalmeida.youtubesummarizer.model.VideoInfo;
 import com.sandroalmeida.youtubesummarizer.service.VideoActionService;
+import com.sandroalmeida.youtubesummarizer.service.VideoCacheService;
 import com.sandroalmeida.youtubesummarizer.service.YouTubeScraperService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,24 +23,64 @@ public class YouTubeController {
 
     private final YouTubeScraperService scraperService;
     private final VideoActionService actionService;
+    private final VideoCacheService cacheService;
 
-    public YouTubeController(YouTubeScraperService scraperService, VideoActionService actionService) {
+    public YouTubeController(YouTubeScraperService scraperService,
+                            VideoActionService actionService,
+                            VideoCacheService cacheService) {
         this.scraperService = scraperService;
         this.actionService = actionService;
+        this.cacheService = cacheService;
     }
 
     @GetMapping("/videos")
     public ResponseEntity<List<VideoInfo>> getVideos(
             @RequestParam(defaultValue = "subscriptions") String tab,
-            @RequestParam(defaultValue = "0") int page) {
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "false") boolean forceRefresh) {
 
-        logger.info("GET /api/videos?tab={}&page={}", tab, page);
+        logger.info("GET /api/videos?tab={}&page={}&forceRefresh={}", tab, page, forceRefresh);
 
         try {
-            List<VideoInfo> videos = scraperService.scrapeVideos(tab, page);
+            List<VideoInfo> videos = scraperService.getVideos(tab, page, forceRefresh);
             return ResponseEntity.ok(videos);
         } catch (Exception e) {
             logger.error("Error fetching videos: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    // ==================== Cache Management Endpoints ====================
+
+    @PostMapping("/cache/invalidate")
+    public ResponseEntity<Map<String, String>> invalidateCache(
+            @RequestParam(required = false) String tab) {
+
+        logger.info("POST /api/cache/invalidate?tab={}", tab);
+
+        try {
+            if (tab != null && !tab.isEmpty()) {
+                cacheService.invalidateTab(tab);
+                return ResponseEntity.ok(Map.of("message", "Cache invalidated for tab: " + tab));
+            } else {
+                cacheService.invalidateAll();
+                return ResponseEntity.ok(Map.of("message", "All caches invalidated"));
+            }
+        } catch (Exception e) {
+            logger.error("Error invalidating cache: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/cache/stats")
+    public ResponseEntity<Map<String, Object>> getCacheStats() {
+        logger.info("GET /api/cache/stats");
+
+        try {
+            Map<String, Object> stats = cacheService.getCacheStats();
+            return ResponseEntity.ok(stats);
+        } catch (Exception e) {
+            logger.error("Error getting cache stats: {}", e.getMessage());
             return ResponseEntity.internalServerError().build();
         }
     }

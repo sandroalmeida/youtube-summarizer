@@ -15,16 +15,19 @@ public class VideoActionService {
     private final BrowserContext browserContext;
     private final TranscriptService transcriptService;
     private final GeminiService geminiService;
+    private final VideoCacheService cacheService;
 
     @Value("${timeout.element.wait.ms:10000}")
     private int elementWaitTimeout;
 
     public VideoActionService(BrowserContext browserContext,
                               TranscriptService transcriptService,
-                              GeminiService geminiService) {
+                              GeminiService geminiService,
+                              VideoCacheService cacheService) {
         this.browserContext = browserContext;
         this.transcriptService = transcriptService;
         this.geminiService = geminiService;
+        this.cacheService = cacheService;
     }
 
     private Page getPage() {
@@ -38,7 +41,14 @@ public class VideoActionService {
     public String getAiSummary(String videoUrl, String videoTitle) {
         logger.info("Getting AI summary for: {}", videoUrl);
 
-        // Step 1: Fetch the video transcript
+        // Check cache first
+        var cachedSummary = cacheService.getSummary(videoUrl);
+        if (cachedSummary.isPresent()) {
+            logger.info("Returning cached summary for: {}", videoUrl);
+            return cachedSummary.get();
+        }
+
+        // Step 1: Fetch the video transcript (uses transcript cache internally)
         String transcript = transcriptService.getTranscript(videoUrl);
 
         if (transcript == null || transcript.isEmpty()) {
@@ -50,6 +60,11 @@ public class VideoActionService {
 
         // Step 2: Send transcript to Gemini for summarization
         String summary = geminiService.summarize(transcript, videoTitle);
+
+        // Cache the summary
+        if (summary != null && !summary.isEmpty()) {
+            cacheService.cacheSummary(videoUrl, summary);
+        }
 
         logger.info("Summary generated: {} characters", summary.length());
         return summary;
