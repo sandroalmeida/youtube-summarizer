@@ -302,16 +302,25 @@ function createVideoCard(video) {
                             data-title="${escapeHtml(video.title)}">
                         ${hasCachedSummary ? 'View Summary' : 'AI Summary'}
                     </button>
-                    <button class="action-btn save-btn ${isVideoSaved ? 'saved' : ''}"
-                            data-video-url="${video.videoUrl}"
-                            data-title="${escapeHtml(video.title)}"
-                            data-channel="${escapeHtml(video.channelName || '')}"
-                            data-thumbnail="${video.thumbnailUrl || ''}"
-                            data-duration="${video.duration || ''}"
-                            data-video-id="${videoId}"
-                            ${isVideoSaved ? 'disabled' : ''}>
-                        ${isVideoSaved ? 'Saved' : 'Save'}
-                    </button>
+                    ${currentTab === 'saved' ? `
+                        <button class="action-btn open-btn" data-video-url="${video.videoUrl}" title="Open video in new tab">
+                            Open
+                        </button>
+                        <button class="action-btn delete-btn" data-video-url="${video.videoUrl}" title="Delete from saved">
+                            Delete
+                        </button>
+                    ` : `
+                        <button class="action-btn save-btn ${isVideoSaved ? 'saved' : ''}"
+                                data-video-url="${video.videoUrl}"
+                                data-title="${escapeHtml(video.title)}"
+                                data-channel="${escapeHtml(video.channelName || '')}"
+                                data-thumbnail="${video.thumbnailUrl || ''}"
+                                data-duration="${video.duration || ''}"
+                                data-video-id="${videoId}"
+                                ${isVideoSaved ? 'disabled' : ''}>
+                            ${isVideoSaved ? 'Saved' : 'Save'}
+                        </button>
+                    `}
                 </div>
             </div>
             <!-- Back face - Summary -->
@@ -370,11 +379,26 @@ function createVideoCard(video) {
         regenerateSummary(card, video.videoUrl, video.title);
     });
 
-    // Save button click
-    card.querySelector('.save-btn').addEventListener('click', (e) => {
-        e.stopPropagation();
-        saveVideoToDatabase(e.target);
-    });
+    // Button handlers based on current tab
+    if (currentTab === 'saved') {
+        // Open button - open video in new tab
+        card.querySelector('.open-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            window.open(video.videoUrl, '_blank');
+        });
+
+        // Delete button - delete from database with confirmation
+        card.querySelector('.delete-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteVideoFromDatabase(e.target, video.videoUrl, video.title);
+        });
+    } else {
+        // Save button click
+        card.querySelector('.save-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            saveVideoToDatabase(e.target);
+        });
+    }
 
     // If summary is already cached, pre-populate the back
     if (hasCachedSummary) {
@@ -939,5 +963,47 @@ async function saveVideoToDatabase(button) {
         button.textContent = originalText;
         button.disabled = false;
         alert('Failed to save video. Please try again.');
+    }
+}
+
+// Delete video from database (for Saved tab)
+async function deleteVideoFromDatabase(button, videoUrl, title) {
+    // Show confirmation dialog
+    const confirmed = confirm(`Are you sure you want to delete "${title}" from your saved videos?`);
+    if (!confirmed) return;
+
+    const originalText = button.textContent;
+    button.textContent = 'Deleting...';
+    button.disabled = true;
+
+    try {
+        const response = await fetch(`/api/videos/saved?videoUrl=${encodeURIComponent(videoUrl)}`, {
+            method: 'DELETE'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Remove from saved set
+            savedVideoUrls.delete(videoUrl);
+
+            // Clear from local cache
+            clearCachedSummary(videoUrl);
+
+            // Clear client-side video cache for saved tab and reload
+            videoCache.saved = { videos: [], pagesLoaded: 0 };
+            currentPage = 0;
+            videoGrid.innerHTML = '';
+            loadVideos();
+        } else {
+            button.textContent = originalText;
+            button.disabled = false;
+            alert(data.message || 'Failed to delete video. Please try again.');
+        }
+    } catch (error) {
+        console.error('Failed to delete video:', error);
+        button.textContent = originalText;
+        button.disabled = false;
+        alert('Failed to delete video. Please try again.');
     }
 }

@@ -190,6 +190,27 @@ main {
     color: #fff;
 }
 
+/* Open button for Saved tab */
+.open-btn {
+    background-color: #1a73e8;
+    color: #fff;
+}
+
+.open-btn:hover {
+    background-color: #1557b0;
+}
+
+/* Delete button for Saved tab */
+.delete-btn {
+    background-color: #303030;
+    color: #f1f1f1;
+}
+
+.delete-btn:hover {
+    background-color: #d32f2f;
+    color: #fff;
+}
+
 .loading {
     display: flex;
     flex-direction: column;
