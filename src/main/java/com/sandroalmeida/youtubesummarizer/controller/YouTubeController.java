@@ -244,6 +244,7 @@ public class YouTubeController {
         String thumbnailUrl = request.get("thumbnailUrl");
         String duration = request.get("duration");
         String videoId = request.get("videoId");
+        String aiSummary = request.get("aiSummary");
 
         logger.info("POST /api/save for: {}", videoUrl);
 
@@ -253,7 +254,7 @@ public class YouTubeController {
 
         try {
             SavedVideo savedVideo = savedVideoService.saveVideo(
-                    videoUrl, title, channelName, thumbnailUrl, duration, videoId);
+                    videoUrl, title, channelName, thumbnailUrl, duration, videoId, aiSummary);
 
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);

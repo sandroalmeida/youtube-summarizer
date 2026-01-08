@@ -27,17 +27,22 @@ public class SavedVideoService {
 
     /**
      * Save a video to the database.
-     * Requires that the summary exists in cache.
+     * Accepts summary from request (e.g., from browser localStorage) or uses server cache.
      */
     @Transactional
     public SavedVideo saveVideo(String videoUrl, String title, String channelName,
-                                 String thumbnailUrl, String duration, String videoId) {
+                                 String thumbnailUrl, String duration, String videoId,
+                                 String providedSummary) {
         logger.info("Saving video to database: {}", videoUrl);
 
-        // Check if summary exists in cache
-        Optional<String> cachedSummary = cacheService.getSummary(videoUrl);
-        if (cachedSummary.isEmpty()) {
-            throw new IllegalStateException("Cannot save video without AI summary. Generate summary first.");
+        // Use provided summary (from frontend localStorage) or fallback to server cache
+        String summary = providedSummary;
+        if (summary == null || summary.isEmpty()) {
+            Optional<String> cachedSummary = cacheService.getSummary(videoUrl);
+            if (cachedSummary.isEmpty()) {
+                throw new IllegalStateException("Cannot save video without AI summary. Generate summary first.");
+            }
+            summary = cachedSummary.get();
         }
 
         // Get transcript from cache
@@ -61,7 +66,7 @@ public class SavedVideoService {
         savedVideo.setThumbnailUrl(thumbnailUrl);
         savedVideo.setDuration(duration);
         savedVideo.setVideoId(videoId);
-        savedVideo.setAiSummary(cachedSummary.get());
+        savedVideo.setAiSummary(summary);
         savedVideo.setTranscript(cachedTranscript.orElse(null));
 
         savedVideo = repository.save(savedVideo);

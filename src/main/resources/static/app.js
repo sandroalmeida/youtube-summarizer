@@ -973,7 +973,8 @@ async function saveVideoToDatabase(button) {
                 channelName,
                 thumbnailUrl,
                 duration,
-                videoId
+                videoId,
+                aiSummary: cachedSummary
             })
         });
 
