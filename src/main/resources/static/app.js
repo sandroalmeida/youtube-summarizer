@@ -902,6 +902,37 @@ function closeModal() {
     currentModalContext = { videoUrl: null, title: null, card: null };
 }
 
+// ==================== Confirmation Modal ====================
+
+const confirmModal = document.getElementById('confirm-modal');
+const confirmTitle = document.getElementById('confirm-title');
+const confirmMessage = document.getElementById('confirm-message');
+let confirmResolve = null;
+
+function showConfirmModal(title, message) {
+    return new Promise((resolve) => {
+        confirmTitle.textContent = title;
+        confirmMessage.textContent = message;
+        confirmResolve = resolve;
+        confirmModal.classList.add('active');
+    });
+}
+
+function closeConfirmModal(result) {
+    confirmModal.classList.remove('active');
+    if (confirmResolve) {
+        confirmResolve(result);
+        confirmResolve = null;
+    }
+}
+
+// Setup confirm modal event listeners
+document.querySelector('.confirm-cancel').addEventListener('click', () => closeConfirmModal(false));
+document.querySelector('.confirm-delete').addEventListener('click', () => closeConfirmModal(true));
+confirmModal.addEventListener('click', (e) => {
+    if (e.target === confirmModal) closeConfirmModal(false);
+});
+
 // Extract video ID from YouTube URL
 function extractVideoId(videoUrl) {
     if (!videoUrl) return '';
@@ -953,6 +984,8 @@ async function saveVideoToDatabase(button) {
             button.classList.add('saved');
             // Add to saved set
             savedVideoUrls.add(videoUrl);
+            // Invalidate saved tab cache so it reloads when user switches to it
+            videoCache.saved = { videos: [], pagesLoaded: 0 };
         } else {
             button.textContent = originalText;
             button.disabled = false;
@@ -969,7 +1002,10 @@ async function saveVideoToDatabase(button) {
 // Delete video from database (for Saved tab)
 async function deleteVideoFromDatabase(button, videoUrl, title) {
     // Show confirmation dialog
-    const confirmed = confirm(`Are you sure you want to delete "${title}" from your saved videos?`);
+    const confirmed = await showConfirmModal(
+        'Delete Video',
+        `Are you sure you want to delete "${title}" from your saved videos?`
+    );
     if (!confirmed) return;
 
     const originalText = button.textContent;
