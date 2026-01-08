@@ -290,8 +290,9 @@ main {
     padding: 24px;
     max-width: 600px;
     width: 90%;
-    max-height: 80vh;
-    overflow-y: auto;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
     position: relative;
 }
 
@@ -324,6 +325,7 @@ main {
     align-items: center;
     gap: 12px;
     padding: 24px;
+    flex-shrink: 0;
 }
 
 .summary-loading.hidden {
@@ -333,10 +335,32 @@ main {
 .summary-text {
     line-height: 1.6;
     white-space: pre-wrap;
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 8px;
 }
 
 .summary-text.hidden {
     display: none;
+}
+
+/* Custom scrollbar for modal summary text */
+.summary-text::-webkit-scrollbar {
+    width: 6px;
+}
+
+.summary-text::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+}
+
+.summary-text::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+}
+
+.summary-text::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
 }
 
 /* Refresh Button */
@@ -595,6 +619,7 @@ main {
     align-items: flex-start;
     margin-bottom: 16px;
     padding-right: 0;
+    flex-shrink: 0;
 }
 
 .modal-header h3 {
