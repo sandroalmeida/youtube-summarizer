@@ -1,6 +1,8 @@
 package com.sandroalmeida.youtubesummarizer.repository;
 
 import com.sandroalmeida.youtubesummarizer.entity.SavedVideo;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -15,4 +17,6 @@ public interface SavedVideoRepository extends JpaRepository<SavedVideo, Long> {
     boolean existsByVideoUrl(String videoUrl);
 
     List<SavedVideo> findAllByOrderBySavedAtDesc();
+
+    Page<SavedVideo> findAllByOrderBySavedAtDesc(Pageable pageable);
 }

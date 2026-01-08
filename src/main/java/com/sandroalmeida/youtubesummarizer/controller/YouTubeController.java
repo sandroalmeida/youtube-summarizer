@@ -280,11 +280,14 @@ public class YouTubeController {
         }
     }
 
+    private static final int SAVED_VIDEOS_PER_PAGE = 16;
+
     @GetMapping("/videos/saved")
-    public ResponseEntity<List<SavedVideo>> getSavedVideos() {
-        logger.info("GET /api/videos/saved");
+    public ResponseEntity<List<SavedVideo>> getSavedVideos(
+            @RequestParam(defaultValue = "0") int page) {
+        logger.info("GET /api/videos/saved?page={}", page);
         try {
-            List<SavedVideo> savedVideos = savedVideoService.getAllSavedVideos();
+            List<SavedVideo> savedVideos = savedVideoService.getSavedVideosPaginated(page, SAVED_VIDEOS_PER_PAGE);
             return ResponseEntity.ok(savedVideos);
         } catch (Exception e) {
             logger.error("Error getting saved videos: {}", e.getMessage());

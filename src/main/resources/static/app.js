@@ -6,7 +6,8 @@ let isLoading = false;
 // Client-side video cache for instant tab switching
 const videoCache = {
     subscriptions: { videos: [], pagesLoaded: 0 },
-    home: { videos: [], pagesLoaded: 0 }
+    home: { videos: [], pagesLoaded: 0 },
+    saved: { videos: [], pagesLoaded: 0 }
 };
 
 // Summary cache key prefix for localStorage
@@ -61,6 +62,11 @@ function setupEventListeners() {
                 tab.classList.add('active');
                 currentTab = newTab;
                 currentPage = 0;
+
+                // Hide refresh button on saved tab (no need to refresh DB data)
+                if (refreshBtn) {
+                    refreshBtn.style.display = newTab === 'saved' ? 'none' : 'flex';
+                }
 
                 // Try to render from cache first
                 if (videoCache[newTab].videos.length > 0) {
@@ -158,6 +164,20 @@ async function loadAccountInfo() {
     }
 }
 
+// Map SavedVideo entity to standard video card format
+function mapSavedVideoToVideoFormat(savedVideo) {
+    return {
+        videoUrl: savedVideo.videoUrl,
+        title: savedVideo.title,
+        channelName: savedVideo.channelName,
+        thumbnailUrl: savedVideo.thumbnailUrl,
+        duration: savedVideo.duration,
+        // Store summary directly for saved videos (pre-cache it)
+        _savedSummary: savedVideo.aiSummary,
+        _isSaved: true
+    };
+}
+
 async function loadVideos(append = false, forceRefresh = false) {
     if (isLoading) return;
     isLoading = true;
@@ -173,16 +193,28 @@ async function loadVideos(append = false, forceRefresh = false) {
     }
 
     try {
-        // Build URL with forceRefresh parameter
-        let url = `/api/videos?tab=${currentTab}&page=${currentPage}`;
-        if (forceRefresh) {
-            url += '&forceRefresh=true';
+        // Build URL based on current tab
+        let url;
+        if (currentTab === 'saved') {
+            // Fetch saved videos from database
+            url = `/api/videos/saved?page=${currentPage}`;
+        } else {
+            // Fetch from YouTube scraper
+            url = `/api/videos?tab=${currentTab}&page=${currentPage}`;
+            if (forceRefresh) {
+                url += '&forceRefresh=true';
+            }
         }
 
         const response = await fetch(url);
         if (!response.ok) throw new Error('Failed to load videos');
 
-        const videos = await response.json();
+        let videos = await response.json();
+
+        // Map saved videos to standard video format
+        if (currentTab === 'saved') {
+            videos = videos.map(mapSavedVideoToVideoFormat);
+        }
 
         // Update client-side cache
         if (!append || forceRefresh) {
@@ -237,12 +269,17 @@ function createVideoCard(video) {
     const card = document.createElement('div');
     card.className = 'video-card';
 
-    // Check if summary is cached
-    const cachedSummary = getCachedSummary(video.videoUrl);
+    // For saved videos from DB, use the embedded summary; otherwise check localStorage
+    let cachedSummary = video._savedSummary || getCachedSummary(video.videoUrl);
     const hasCachedSummary = cachedSummary !== null;
 
-    // Check if video is already saved
-    const isVideoSaved = savedVideoUrls.has(video.videoUrl);
+    // For saved videos from DB, cache the summary in localStorage for consistency
+    if (video._savedSummary && !getCachedSummary(video.videoUrl)) {
+        cacheSummary(video.videoUrl, video._savedSummary);
+    }
+
+    // Check if video is already saved (from DB flag or savedVideoUrls set)
+    const isVideoSaved = video._isSaved || savedVideoUrls.has(video.videoUrl);
 
     // Extract videoId from URL
     const videoId = extractVideoId(video.videoUrl);

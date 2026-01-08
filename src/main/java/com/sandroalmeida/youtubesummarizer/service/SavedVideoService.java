@@ -4,6 +4,8 @@ import com.sandroalmeida.youtubesummarizer.entity.SavedVideo;
 import com.sandroalmeida.youtubesummarizer.repository.SavedVideoRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -87,6 +89,14 @@ public class SavedVideoService {
      */
     public List<SavedVideo> getAllSavedVideos() {
         return repository.findAllByOrderBySavedAtDesc();
+    }
+
+    /**
+     * Get saved videos with pagination, ordered by most recent.
+     */
+    public List<SavedVideo> getSavedVideosPaginated(int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        return repository.findAllByOrderBySavedAtDesc(pageable).getContent();
     }
 
     /**
