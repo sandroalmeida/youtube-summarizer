@@ -237,6 +237,17 @@ public class VideoCacheService {
     }
 
     /**
+     * Invalidate cached summary and transcript for a specific video.
+     * Used when user requests a fresh summary regeneration.
+     */
+    public void invalidateVideoCache(String videoUrl) {
+        boolean summaryRemoved = summaryCache.remove(videoUrl) != null;
+        boolean transcriptRemoved = transcriptCache.remove(videoUrl) != null;
+        logger.info("Invalidated cache for video: {} (summary: {}, transcript: {})",
+                    videoUrl, summaryRemoved, transcriptRemoved);
+    }
+
+    /**
      * Get cache statistics for monitoring.
      */
     public Map<String, Object> getCacheStats() {

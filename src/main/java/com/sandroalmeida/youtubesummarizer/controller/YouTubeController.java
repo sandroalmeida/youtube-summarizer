@@ -176,6 +176,35 @@ public class YouTubeController {
     }
 
     /**
+     * Regenerate summary - clears cache and forces fresh transcript + Gemini call.
+     */
+    @PostMapping("/summary/regenerate")
+    public ResponseEntity<Map<String, Object>> regenerateSummary(@RequestBody Map<String, String> request) {
+        String videoUrl = request.get("videoUrl");
+        String videoTitle = request.get("videoTitle");
+        logger.info("POST /api/summary/regenerate for: {}", videoUrl);
+
+        if (videoUrl == null || videoUrl.isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "videoUrl is required"));
+        }
+
+        try {
+            // Submit with forceRegenerate=true to clear caches and generate fresh
+            SummaryRequest summaryRequest = summaryQueueService.submitRequest(videoUrl, videoTitle, true);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("requestId", summaryRequest.getRequestId());
+            response.put("status", summaryRequest.getStatus().name());
+            response.put("queuePosition", summaryRequest.getQueuePosition());
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Error regenerating summary: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    /**
      * Legacy sync endpoint - kept for backwards compatibility.
      * Consider using /api/summary/request for better UX.
      */

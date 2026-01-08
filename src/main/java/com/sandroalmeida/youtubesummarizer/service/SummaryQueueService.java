@@ -45,25 +45,43 @@ public class SummaryQueueService {
      * Returns immediately with a request ID.
      */
     public SummaryRequest submitRequest(String videoUrl, String videoTitle) {
-        // Check if summary is already cached
-        var cachedSummary = cacheService.getSummary(videoUrl);
-        if (cachedSummary.isPresent()) {
-            logger.info("Summary already cached for: {}", videoUrl);
-            SummaryRequest request = new SummaryRequest(UUID.randomUUID().toString(), videoUrl, videoTitle);
-            request.setStatus(Status.COMPLETED);
-            request.setSummary(cachedSummary.get());
-            request.setCompletedAt(LocalDateTime.now());
-            request.setQueuePosition(0);
-            return request;
+        return submitRequest(videoUrl, videoTitle, false);
+    }
+
+    /**
+     * Submit a new summary request with optional force regeneration.
+     * @param forceRegenerate If true, clears cached summary and transcript to force fresh generation
+     */
+    public SummaryRequest submitRequest(String videoUrl, String videoTitle, boolean forceRegenerate) {
+        // If force regenerate, clear caches first
+        if (forceRegenerate) {
+            logger.info("Force regenerate requested for: {}", videoUrl);
+            cacheService.invalidateVideoCache(videoUrl);
         }
 
-        // Check if there's already a pending request for this video
-        for (SummaryRequest existing : requests.values()) {
-            if (existing.getVideoUrl().equals(videoUrl) &&
-                (existing.getStatus() == Status.QUEUED || existing.getStatus() == Status.PROCESSING)) {
-                logger.info("Request already pending for: {}", videoUrl);
-                updateQueuePositions();
-                return existing;
+        // Check if summary is already cached (skip if forcing regeneration)
+        if (!forceRegenerate) {
+            var cachedSummary = cacheService.getSummary(videoUrl);
+            if (cachedSummary.isPresent()) {
+                logger.info("Summary already cached for: {}", videoUrl);
+                SummaryRequest request = new SummaryRequest(UUID.randomUUID().toString(), videoUrl, videoTitle);
+                request.setStatus(Status.COMPLETED);
+                request.setSummary(cachedSummary.get());
+                request.setCompletedAt(LocalDateTime.now());
+                request.setQueuePosition(0);
+                return request;
+            }
+        }
+
+        // Check if there's already a pending request for this video (skip if forcing regeneration)
+        if (!forceRegenerate) {
+            for (SummaryRequest existing : requests.values()) {
+                if (existing.getVideoUrl().equals(videoUrl) &&
+                    (existing.getStatus() == Status.QUEUED || existing.getStatus() == Status.PROCESSING)) {
+                    logger.info("Request already pending for: {}", videoUrl);
+                    updateQueuePositions();
+                    return existing;
+                }
             }
         }
 
@@ -78,7 +96,8 @@ public class SummaryQueueService {
         // Update queue positions
         updateQueuePositions();
 
-        logger.info("New summary request queued: {} (position {})", requestId, request.getQueuePosition());
+        logger.info("New summary request queued: {} (position {}){}",
+                    requestId, request.getQueuePosition(), forceRegenerate ? " [FORCE REGENERATE]" : "");
 
         // Trigger queue processing
         triggerProcessing();

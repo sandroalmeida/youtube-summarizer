@@ -79,6 +79,12 @@ function setupEventListeners() {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') closeModal();
     });
+
+    // Modal regenerate button
+    const modalRegenerateBtn = document.getElementById('modal-regenerate-btn');
+    if (modalRegenerateBtn) {
+        modalRegenerateBtn.addEventListener('click', regenerateFromModal);
+    }
 }
 
 // Render videos from client-side cache (instant tab switching)
@@ -249,12 +255,21 @@ function createVideoCard(video) {
                     </button>
                 </div>
                 <div class="summary-preview"></div>
-                <button class="expand-summary-btn" data-video-url="${video.videoUrl}" data-title="${escapeHtml(video.title)}">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
-                    </svg>
-                    Expand
-                </button>
+                <div class="card-back-actions">
+                    <button class="regenerate-btn" data-video-url="${video.videoUrl}" data-title="${escapeHtml(video.title)}" title="Generate new summary">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M23 4v6h-6M1 20v-6h6"/>
+                            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                        </svg>
+                        New
+                    </button>
+                    <button class="expand-summary-btn" data-video-url="${video.videoUrl}" data-title="${escapeHtml(video.title)}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+                        </svg>
+                        Expand
+                    </button>
+                </div>
             </div>
         </div>
     `;
@@ -276,7 +291,13 @@ function createVideoCard(video) {
     card.querySelector('.expand-summary-btn').addEventListener('click', (e) => {
         e.stopPropagation();
         const summary = card.querySelector('.summary-preview').dataset.fullSummary;
-        openSummaryModal(video.title, summary);
+        openSummaryModal(video.title, summary, video.videoUrl);
+    });
+
+    // Regenerate button - request fresh summary
+    card.querySelector('.regenerate-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        regenerateSummary(card, video.videoUrl, video.title);
     });
 
     // Save button click
@@ -450,6 +471,232 @@ function cleanupPendingSummaries() {
 // Cleanup on page unload
 window.addEventListener('beforeunload', cleanupPendingSummaries);
 
+// ==================== Regenerate Summary ====================
+
+// Regenerate summary - clears cache and requests fresh summary
+async function regenerateSummary(card, videoUrl, title) {
+    const regenerateBtn = card.querySelector('.regenerate-btn');
+    const previewEl = card.querySelector('.summary-preview');
+    const summaryBtn = card.querySelector('.summary-btn');
+
+    // Clear local cache
+    clearCachedSummary(videoUrl);
+
+    // Show loading state on regenerate button
+    regenerateBtn.disabled = true;
+    regenerateBtn.classList.add('loading');
+    regenerateBtn.innerHTML = '<span class="btn-spinner"></span>';
+
+    // Show loading on preview
+    previewEl.textContent = 'Generating new summary...';
+    previewEl.dataset.fullSummary = '';
+
+    try {
+        // Call regenerate endpoint (clears server cache too)
+        const response = await fetch('/api/summary/regenerate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ videoUrl, videoTitle: title })
+        });
+
+        if (!response.ok) throw new Error('Failed to submit regenerate request');
+
+        const data = await response.json();
+        const { requestId, status, queuePosition } = data;
+
+        // Start polling for status
+        const intervalId = setInterval(() => {
+            pollRegenerateSummaryStatus(requestId, card, videoUrl, regenerateBtn, previewEl, summaryBtn);
+        }, 2000);
+
+        // Track this pending request (reuse the pendingSummaries map)
+        pendingSummaries.set(videoUrl, { requestId, intervalId, card });
+
+        // Update regenerate button to show queue status
+        updateRegenerateButtonStatus(regenerateBtn, status, queuePosition);
+
+        console.log(`Regenerate request queued: ${requestId} (position ${queuePosition})`);
+
+    } catch (error) {
+        console.error('Failed to regenerate summary:', error);
+        regenerateBtn.disabled = false;
+        regenerateBtn.classList.remove('loading');
+        regenerateBtn.innerHTML = `
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 4v6h-6M1 20v-6h6"/>
+                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+            </svg>
+            New
+        `;
+        previewEl.textContent = 'Failed to regenerate. Try again.';
+    }
+}
+
+// Poll for regenerate summary status
+async function pollRegenerateSummaryStatus(requestId, card, videoUrl, regenerateBtn, previewEl, summaryBtn) {
+    try {
+        const response = await fetch(`/api/summary/status/${requestId}`);
+
+        if (!response.ok) {
+            console.error('Failed to get regenerate status');
+            return;
+        }
+
+        const data = await response.json();
+        const { status, summary, queuePosition, error } = data;
+
+        // Update button status
+        updateRegenerateButtonStatus(regenerateBtn, status, queuePosition);
+
+        if (status === 'COMPLETED') {
+            // Stop polling
+            stopPolling(videoUrl);
+
+            const finalSummary = summary || 'No summary available.';
+
+            // Cache the new summary
+            if (finalSummary && finalSummary !== 'No summary available.') {
+                cacheSummary(videoUrl, finalSummary);
+            }
+
+            // Update preview
+            previewEl.textContent = truncateText(finalSummary, 300);
+            previewEl.dataset.fullSummary = finalSummary;
+
+            // Reset regenerate button
+            regenerateBtn.disabled = false;
+            regenerateBtn.classList.remove('loading');
+            regenerateBtn.innerHTML = `
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M23 4v6h-6M1 20v-6h6"/>
+                    <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                </svg>
+                New
+            `;
+
+            // Update front button state
+            summaryBtn.classList.add('has-cache');
+            summaryBtn.textContent = 'View Summary';
+
+            // If modal is open with this video, update it
+            if (currentModalContext.videoUrl === videoUrl) {
+                summaryText.textContent = finalSummary;
+            }
+
+            console.log('Summary regenerated successfully');
+
+        } else if (status === 'FAILED') {
+            // Stop polling and show error
+            stopPolling(videoUrl);
+
+            regenerateBtn.disabled = false;
+            regenerateBtn.classList.remove('loading');
+            regenerateBtn.innerHTML = `
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M23 4v6h-6M1 20v-6h6"/>
+                    <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                </svg>
+                New
+            `;
+
+            previewEl.textContent = 'Failed to regenerate: ' + (error || 'Unknown error');
+            console.error('Regenerate failed:', error);
+        }
+
+    } catch (error) {
+        console.error('Error polling regenerate status:', error);
+    }
+}
+
+// Update regenerate button to show status
+function updateRegenerateButtonStatus(btn, status, queuePosition) {
+    if (status === 'QUEUED') {
+        btn.innerHTML = `<span class="btn-spinner"></span> #${queuePosition}`;
+    } else if (status === 'PROCESSING') {
+        btn.innerHTML = '<span class="btn-spinner"></span>';
+    }
+}
+
+// Regenerate from modal
+async function regenerateFromModal() {
+    if (!currentModalContext.videoUrl) {
+        console.error('No video context for modal regeneration');
+        return;
+    }
+
+    const modalRegenerateBtn = document.getElementById('modal-regenerate-btn');
+
+    // Clear local cache
+    clearCachedSummary(currentModalContext.videoUrl);
+
+    // Show loading state
+    modalRegenerateBtn.disabled = true;
+    modalRegenerateBtn.classList.add('loading');
+    summaryText.textContent = 'Generating new summary...';
+
+    try {
+        // Call regenerate endpoint
+        const response = await fetch('/api/summary/regenerate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                videoUrl: currentModalContext.videoUrl,
+                videoTitle: currentModalContext.title
+            })
+        });
+
+        if (!response.ok) throw new Error('Failed to submit regenerate request');
+
+        const data = await response.json();
+        const { requestId } = data;
+
+        // Poll for completion
+        const checkStatus = async () => {
+            const statusResponse = await fetch(`/api/summary/status/${requestId}`);
+            const statusData = await statusResponse.json();
+
+            if (statusData.status === 'COMPLETED') {
+                const newSummary = statusData.summary || 'No summary available.';
+
+                // Cache it
+                if (newSummary && newSummary !== 'No summary available.') {
+                    cacheSummary(currentModalContext.videoUrl, newSummary);
+                }
+
+                // Update modal
+                summaryText.textContent = newSummary;
+                modalRegenerateBtn.disabled = false;
+                modalRegenerateBtn.classList.remove('loading');
+
+                // Update card if we have a reference
+                if (currentModalContext.card) {
+                    const previewEl = currentModalContext.card.querySelector('.summary-preview');
+                    if (previewEl) {
+                        previewEl.textContent = truncateText(newSummary, 300);
+                        previewEl.dataset.fullSummary = newSummary;
+                    }
+                }
+
+            } else if (statusData.status === 'FAILED') {
+                summaryText.textContent = 'Failed to regenerate: ' + (statusData.error || 'Unknown error');
+                modalRegenerateBtn.disabled = false;
+                modalRegenerateBtn.classList.remove('loading');
+            } else {
+                // Still processing, check again
+                setTimeout(checkStatus, 2000);
+            }
+        };
+
+        checkStatus();
+
+    } catch (error) {
+        console.error('Failed to regenerate from modal:', error);
+        summaryText.textContent = 'Failed to regenerate. Please try again.';
+        modalRegenerateBtn.disabled = false;
+        modalRegenerateBtn.classList.remove('loading');
+    }
+}
+
 function truncateText(text, maxLength) {
     if (!text) return '';
     if (text.length <= maxLength) return text;
@@ -499,6 +746,16 @@ function cacheSummary(videoUrl, summary) {
     }
 }
 
+function clearCachedSummary(videoUrl) {
+    try {
+        const key = SUMMARY_CACHE_PREFIX + btoa(videoUrl);
+        localStorage.removeItem(key);
+        console.log('Cleared cached summary for:', videoUrl);
+    } catch (e) {
+        console.error('Error clearing summary cache:', e);
+    }
+}
+
 function cleanupExpiredSummaries() {
     try {
         const keysToRemove = [];
@@ -526,16 +783,29 @@ function cleanupExpiredSummaries() {
 
 // ==================== Summary Modal (for expanded view) ====================
 
-function openSummaryModal(title, summary) {
+// Store current modal context for regeneration
+let currentModalContext = { videoUrl: null, title: null, card: null };
+
+function openSummaryModal(title, summary, videoUrl, card = null) {
+    currentModalContext = { videoUrl, title, card };
+
     summaryTitle.textContent = title || 'Video Summary';
     summaryText.textContent = summary || 'No summary available.';
     summaryText.classList.remove('hidden');
     summaryLoading.classList.add('hidden');
     summaryModal.classList.add('active');
+
+    // Reset regenerate button state
+    const modalRegenerateBtn = document.getElementById('modal-regenerate-btn');
+    if (modalRegenerateBtn) {
+        modalRegenerateBtn.disabled = false;
+        modalRegenerateBtn.classList.remove('loading');
+    }
 }
 
 function closeModal() {
     summaryModal.classList.remove('active');
+    currentModalContext = { videoUrl: null, title: null, card: null };
 }
 
 async function saveToWatchLater(button, videoUrl) {

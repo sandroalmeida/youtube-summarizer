@@ -550,3 +550,96 @@ main {
 .summary-btn.error:hover {
     background-color: #f44336;
 }
+
+/* Card back actions container */
+.card-back-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* Regenerate button on card back */
+.regenerate-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 10px;
+    border: none;
+    background-color: #303030;
+    color: #f1f1f1;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: background-color 0.2s;
+}
+
+.regenerate-btn:hover {
+    background-color: #3f3f3f;
+}
+
+.regenerate-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.9;
+}
+
+.regenerate-btn.loading {
+    background-color: #3f3f3f;
+}
+
+/* Modal header layout */
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+    padding-right: 0;
+}
+
+.modal-header h3 {
+    flex: 1;
+    margin: 0;
+    padding-right: 16px;
+}
+
+.modal-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+/* Modal regenerate button */
+.modal-regenerate-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    background-color: #303030;
+    color: #f1f1f1;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.modal-regenerate-btn:hover {
+    background-color: #3f3f3f;
+}
+
+.modal-regenerate-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.modal-regenerate-btn.loading svg {
+    animation: spin 1s linear infinite;
+}
+
+/* Fix close button positioning */
+.summary-content .close-modal {
+    position: static;
+    padding: 4px 8px;
+}
