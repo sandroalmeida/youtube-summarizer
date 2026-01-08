@@ -13,6 +13,9 @@ const videoCache = {
 const SUMMARY_CACHE_PREFIX = 'yt_summary_';
 const SUMMARY_CACHE_TTL_DAYS = 7;
 
+// Set of saved video URLs (loaded on startup)
+let savedVideoUrls = new Set();
+
 // DOM Elements
 const videoGrid = document.getElementById('video-grid');
 const loading = document.getElementById('loading');
@@ -26,12 +29,27 @@ const tabs = document.querySelectorAll('.tab');
 const refreshBtn = document.getElementById('refresh-btn');
 
 // Initialize
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    await loadSavedVideoUrls();
     loadAccountInfo();
     loadVideos();
     setupEventListeners();
     cleanupExpiredSummaries();
 });
+
+// Load saved video URLs for showing saved indicators
+async function loadSavedVideoUrls() {
+    try {
+        const response = await fetch('/api/videos/saved/urls');
+        if (response.ok) {
+            const urls = await response.json();
+            savedVideoUrls = new Set(urls);
+            console.log(`Loaded ${savedVideoUrls.size} saved video URLs`);
+        }
+    } catch (error) {
+        console.error('Failed to load saved video URLs:', error);
+    }
+}
 
 function setupEventListeners() {
     // Tab switching - use cache for instant switching
@@ -223,6 +241,12 @@ function createVideoCard(video) {
     const cachedSummary = getCachedSummary(video.videoUrl);
     const hasCachedSummary = cachedSummary !== null;
 
+    // Check if video is already saved
+    const isVideoSaved = savedVideoUrls.has(video.videoUrl);
+
+    // Extract videoId from URL
+    const videoId = extractVideoId(video.videoUrl);
+
     card.innerHTML = `
         <div class="card-inner">
             <!-- Front face - Video info -->
@@ -241,7 +265,16 @@ function createVideoCard(video) {
                             data-title="${escapeHtml(video.title)}">
                         ${hasCachedSummary ? 'View Summary' : 'AI Summary'}
                     </button>
-                    <button class="action-btn save-btn" data-video-url="${video.videoUrl}">Save</button>
+                    <button class="action-btn save-btn ${isVideoSaved ? 'saved' : ''}"
+                            data-video-url="${video.videoUrl}"
+                            data-title="${escapeHtml(video.title)}"
+                            data-channel="${escapeHtml(video.channelName || '')}"
+                            data-thumbnail="${video.thumbnailUrl || ''}"
+                            data-duration="${video.duration || ''}"
+                            data-video-id="${videoId}"
+                            ${isVideoSaved ? 'disabled' : ''}>
+                        ${isVideoSaved ? 'Saved' : 'Save'}
+                    </button>
                 </div>
             </div>
             <!-- Back face - Summary -->
@@ -303,7 +336,7 @@ function createVideoCard(video) {
     // Save button click
     card.querySelector('.save-btn').addEventListener('click', (e) => {
         e.stopPropagation();
-        saveToWatchLater(e.target, video.videoUrl);
+        saveVideoToDatabase(e.target);
     });
 
     // If summary is already cached, pre-populate the back
@@ -808,8 +841,31 @@ function closeModal() {
     currentModalContext = { videoUrl: null, title: null, card: null };
 }
 
-async function saveToWatchLater(button, videoUrl) {
+// Extract video ID from YouTube URL
+function extractVideoId(videoUrl) {
+    if (!videoUrl) return '';
+    const match = videoUrl.match(/[?&]v=([^&]+)/);
+    return match ? match[1] : '';
+}
+
+// Save video to database (requires summary to be generated first)
+async function saveVideoToDatabase(button) {
     if (button.classList.contains('saved')) return;
+
+    // Get video data from button data attributes
+    const videoUrl = button.dataset.videoUrl;
+    const title = button.dataset.title;
+    const channelName = button.dataset.channel;
+    const thumbnailUrl = button.dataset.thumbnail;
+    const duration = button.dataset.duration;
+    const videoId = button.dataset.videoId;
+
+    // Check if summary exists in local cache
+    const cachedSummary = getCachedSummary(videoUrl);
+    if (!cachedSummary) {
+        alert('Please generate an AI Summary first before saving.');
+        return;
+    }
 
     const originalText = button.textContent;
     button.textContent = 'Saving...';
@@ -819,23 +875,32 @@ async function saveToWatchLater(button, videoUrl) {
         const response = await fetch('/api/save', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ videoUrl })
+            body: JSON.stringify({
+                videoUrl,
+                videoTitle: title,
+                channelName,
+                thumbnailUrl,
+                duration,
+                videoId
+            })
         });
 
         const data = await response.json();
 
         if (data.success) {
-            button.textContent = 'Saved!';
+            button.textContent = 'Saved';
             button.classList.add('saved');
+            // Add to saved set
+            savedVideoUrls.add(videoUrl);
         } else {
             button.textContent = originalText;
-            alert('Failed to save video. Please try again.');
+            button.disabled = false;
+            alert(data.error || 'Failed to save video. Please try again.');
         }
     } catch (error) {
-        console.error('Failed to save to Watch Later:', error);
+        console.error('Failed to save video:', error);
         button.textContent = originalText;
-        alert('Failed to save video. Please try again.');
-    } finally {
         button.disabled = false;
+        alert('Failed to save video. Please try again.');
     }
 }

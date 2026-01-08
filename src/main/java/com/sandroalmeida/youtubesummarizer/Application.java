@@ -1,5 +1,6 @@
 package com.sandroalmeida.youtubesummarizer;
 
+import com.sandroalmeida.youtubesummarizer.service.SavedVideoService;
 import com.sandroalmeida.youtubesummarizer.service.YouTubeScraperService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,9 +17,11 @@ public class Application {
     private static final Logger logger = LoggerFactory.getLogger(Application.class);
 
     private final YouTubeScraperService scraperService;
+    private final SavedVideoService savedVideoService;
 
-    public Application(YouTubeScraperService scraperService) {
+    public Application(YouTubeScraperService scraperService, SavedVideoService savedVideoService) {
         this.scraperService = scraperService;
+        this.savedVideoService = savedVideoService;
     }
 
     public static void main(String[] args) {
@@ -27,8 +30,12 @@ public class Application {
 
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
-        logger.info("Application ready, preloading YouTube...");
+        logger.info("Application ready, loading saved videos into cache...");
+        savedVideoService.loadSavedVideosIntoCache();
+
+        logger.info("Preloading YouTube...");
         scraperService.preloadYouTube();
-        logger.info("YouTube preload complete. Application is ready at http://localhost:8080");
+
+        logger.info("Application is ready at http://localhost:8080");
     }
 }

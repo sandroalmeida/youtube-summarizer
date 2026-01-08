@@ -1,8 +1,10 @@
 package com.sandroalmeida.youtubesummarizer.controller;
 
+import com.sandroalmeida.youtubesummarizer.entity.SavedVideo;
 import com.sandroalmeida.youtubesummarizer.model.AccountInfo;
 import com.sandroalmeida.youtubesummarizer.model.SummaryRequest;
 import com.sandroalmeida.youtubesummarizer.model.VideoInfo;
+import com.sandroalmeida.youtubesummarizer.service.SavedVideoService;
 import com.sandroalmeida.youtubesummarizer.service.SummaryQueueService;
 import com.sandroalmeida.youtubesummarizer.service.VideoActionService;
 import com.sandroalmeida.youtubesummarizer.service.VideoCacheService;
@@ -27,15 +29,18 @@ public class YouTubeController {
     private final VideoActionService actionService;
     private final VideoCacheService cacheService;
     private final SummaryQueueService summaryQueueService;
+    private final SavedVideoService savedVideoService;
 
     public YouTubeController(YouTubeScraperService scraperService,
                             VideoActionService actionService,
                             VideoCacheService cacheService,
-                            SummaryQueueService summaryQueueService) {
+                            SummaryQueueService summaryQueueService,
+                            SavedVideoService savedVideoService) {
         this.scraperService = scraperService;
         this.actionService = actionService;
         this.cacheService = cacheService;
         this.summaryQueueService = summaryQueueService;
+        this.savedVideoService = savedVideoService;
     }
 
     @GetMapping("/videos")
@@ -229,9 +234,17 @@ public class YouTubeController {
         }
     }
 
+    // ==================== Saved Videos Endpoints ====================
+
     @PostMapping("/save")
-    public ResponseEntity<Map<String, Object>> saveToWatchLater(@RequestBody Map<String, String> request) {
+    public ResponseEntity<Map<String, Object>> saveVideo(@RequestBody Map<String, String> request) {
         String videoUrl = request.get("videoUrl");
+        String title = request.get("videoTitle");
+        String channelName = request.get("channelName");
+        String thumbnailUrl = request.get("thumbnailUrl");
+        String duration = request.get("duration");
+        String videoId = request.get("videoId");
+
         logger.info("POST /api/save for: {}", videoUrl);
 
         if (videoUrl == null || videoUrl.isEmpty()) {
@@ -239,14 +252,85 @@ public class YouTubeController {
         }
 
         try {
-            boolean success = actionService.saveToWatchLater(videoUrl);
+            SavedVideo savedVideo = savedVideoService.saveVideo(
+                    videoUrl, title, channelName, thumbnailUrl, duration, videoId);
+
             Map<String, Object> response = new HashMap<>();
-            response.put("success", success);
-            response.put("message", success ? "Saved to Watch Later" : "Failed to save");
+            response.put("success", true);
+            response.put("message", "Video saved to database");
+            response.put("savedVideo", Map.of(
+                    "id", savedVideo.getId(),
+                    "videoUrl", savedVideo.getVideoUrl(),
+                    "title", savedVideo.getTitle(),
+                    "savedAt", savedVideo.getSavedAt().toString()
+            ));
+            return ResponseEntity.ok(response);
+        } catch (IllegalStateException e) {
+            logger.warn("Cannot save video: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        } catch (Exception e) {
+            logger.error("Error saving video: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "success", false,
+                    "error", e.getMessage()
+            ));
+        }
+    }
+
+    @GetMapping("/videos/saved")
+    public ResponseEntity<List<SavedVideo>> getSavedVideos() {
+        logger.info("GET /api/videos/saved");
+        try {
+            List<SavedVideo> savedVideos = savedVideoService.getAllSavedVideos();
+            return ResponseEntity.ok(savedVideos);
+        } catch (Exception e) {
+            logger.error("Error getting saved videos: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @DeleteMapping("/videos/saved")
+    public ResponseEntity<Map<String, Object>> deleteSavedVideo(@RequestParam String videoUrl) {
+        logger.info("DELETE /api/videos/saved?videoUrl={}", videoUrl);
+
+        try {
+            boolean deleted = savedVideoService.deleteSavedVideo(videoUrl);
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", deleted);
+            response.put("message", deleted ? "Video removed from saved" : "Video not found");
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            logger.error("Error saving to Watch Later: {}", e.getMessage());
+            logger.error("Error deleting saved video: {}", e.getMessage());
             return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/videos/saved/check")
+    public ResponseEntity<Map<String, Object>> checkIfSaved(@RequestParam String videoUrl) {
+        logger.debug("GET /api/videos/saved/check?videoUrl={}", videoUrl);
+
+        try {
+            boolean isSaved = savedVideoService.isSaved(videoUrl);
+            return ResponseEntity.ok(Map.of("isSaved", isSaved));
+        } catch (Exception e) {
+            logger.error("Error checking if saved: {}", e.getMessage());
+            return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/videos/saved/urls")
+    public ResponseEntity<List<String>> getSavedVideoUrls() {
+        logger.debug("GET /api/videos/saved/urls");
+
+        try {
+            List<String> urls = savedVideoService.getSavedVideoUrls();
+            return ResponseEntity.ok(urls);
+        } catch (Exception e) {
+            logger.error("Error getting saved video URLs: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
         }
     }
 }
