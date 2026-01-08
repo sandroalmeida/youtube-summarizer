@@ -533,5 +533,20 @@ main {
 /* Loading state for summary button */
 .summary-btn:disabled {
     cursor: not-allowed;
-    opacity: 0.8;
+    opacity: 0.9;
+}
+
+/* Queue status styles */
+.summary-btn:disabled .btn-spinner {
+    margin-right: 4px;
+}
+
+/* Error state for summary button */
+.summary-btn.error {
+    background-color: #d32f2f;
+    color: #fff;
+}
+
+.summary-btn.error:hover {
+    background-color: #f44336;
 }

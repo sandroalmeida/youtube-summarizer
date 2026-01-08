@@ -295,12 +295,15 @@ function createVideoCard(video) {
     return card;
 }
 
-// Load summary and flip the card
+// Track pending summary requests
+const pendingSummaries = new Map(); // videoUrl → { requestId, intervalId, card }
+
+// Load summary and flip the card (async with polling)
 async function loadSummaryAndFlip(card, videoUrl, title) {
     const summaryBtn = card.querySelector('.summary-btn');
     const previewEl = card.querySelector('.summary-preview');
 
-    // Check cache first
+    // Check local cache first
     const cachedSummary = getCachedSummary(videoUrl);
     if (cachedSummary) {
         previewEl.textContent = truncateText(cachedSummary, 300);
@@ -309,47 +312,143 @@ async function loadSummaryAndFlip(card, videoUrl, title) {
         return;
     }
 
+    // Check if already pending
+    if (pendingSummaries.has(videoUrl)) {
+        console.log('Summary already pending for:', videoUrl);
+        return;
+    }
+
     // Show loading state on button
-    const originalText = summaryBtn.textContent;
     summaryBtn.disabled = true;
-    summaryBtn.innerHTML = '<span class="btn-spinner"></span> Loading...';
+    summaryBtn.innerHTML = '<span class="btn-spinner"></span> Queuing...';
 
     try {
-        const response = await fetch('/api/summary', {
+        // Submit request to queue
+        const response = await fetch('/api/summary/request', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ videoUrl, videoTitle: title })
         });
 
-        if (!response.ok) throw new Error('Failed to get summary');
+        if (!response.ok) throw new Error('Failed to submit summary request');
 
         const data = await response.json();
-        const summary = data.summary || 'No summary available.';
+        const { requestId, status, summary, queuePosition } = data;
 
-        // Cache the summary
-        if (summary && summary !== 'No summary available.') {
-            cacheSummary(videoUrl, summary);
+        // If already completed (from server cache), show immediately
+        if (status === 'COMPLETED' && summary) {
+            handleSummaryComplete(card, videoUrl, summary, summaryBtn, previewEl);
+            return;
         }
 
-        // Update the back of the card
-        previewEl.textContent = truncateText(summary, 300);
-        previewEl.dataset.fullSummary = summary;
+        // Update button to show queue position
+        updateSummaryButtonStatus(summaryBtn, status, queuePosition);
 
-        // Flip the card
-        card.classList.add('flipped');
+        // Start polling for status
+        const intervalId = setInterval(() => {
+            pollSummaryStatus(requestId, card, videoUrl, summaryBtn, previewEl);
+        }, 2000);
 
-        // Update button to show it has cache now
-        summaryBtn.classList.add('has-cache');
-        summaryBtn.textContent = 'View Summary';
+        // Track this pending request
+        pendingSummaries.set(videoUrl, { requestId, intervalId, card });
+
+        console.log(`Summary request queued: ${requestId} (position ${queuePosition})`);
 
     } catch (error) {
-        console.error('Failed to get AI summary:', error);
-        summaryBtn.textContent = originalText;
-        alert('Failed to get AI summary. Please try again.');
-    } finally {
+        console.error('Failed to submit summary request:', error);
         summaryBtn.disabled = false;
+        summaryBtn.textContent = 'AI Summary';
+        alert('Failed to request AI summary. Please try again.');
     }
 }
+
+// Poll for summary status
+async function pollSummaryStatus(requestId, card, videoUrl, summaryBtn, previewEl) {
+    try {
+        const response = await fetch(`/api/summary/status/${requestId}`);
+
+        if (!response.ok) {
+            console.error('Failed to get summary status');
+            return;
+        }
+
+        const data = await response.json();
+        const { status, summary, queuePosition, error } = data;
+
+        // Update button status
+        updateSummaryButtonStatus(summaryBtn, status, queuePosition);
+
+        if (status === 'COMPLETED') {
+            // Stop polling
+            stopPolling(videoUrl);
+            handleSummaryComplete(card, videoUrl, summary, summaryBtn, previewEl);
+
+        } else if (status === 'FAILED') {
+            // Stop polling and show error
+            stopPolling(videoUrl);
+            summaryBtn.disabled = false;
+            summaryBtn.textContent = 'AI Summary';
+            summaryBtn.classList.add('error');
+            console.error('Summary generation failed:', error);
+            alert('Failed to generate summary: ' + (error || 'Unknown error'));
+        }
+
+    } catch (error) {
+        console.error('Error polling summary status:', error);
+    }
+}
+
+// Handle completed summary
+function handleSummaryComplete(card, videoUrl, summary, summaryBtn, previewEl) {
+    const finalSummary = summary || 'No summary available.';
+
+    // Cache the summary
+    if (finalSummary && finalSummary !== 'No summary available.') {
+        cacheSummary(videoUrl, finalSummary);
+    }
+
+    // Update the back of the card
+    previewEl.textContent = truncateText(finalSummary, 300);
+    previewEl.dataset.fullSummary = finalSummary;
+
+    // Flip the card
+    card.classList.add('flipped');
+
+    // Update button to show it has cache now
+    summaryBtn.disabled = false;
+    summaryBtn.classList.remove('error');
+    summaryBtn.classList.add('has-cache');
+    summaryBtn.textContent = 'View Summary';
+}
+
+// Update button to show current status
+function updateSummaryButtonStatus(summaryBtn, status, queuePosition) {
+    if (status === 'QUEUED') {
+        summaryBtn.innerHTML = `<span class="btn-spinner"></span> Queue #${queuePosition}`;
+    } else if (status === 'PROCESSING') {
+        summaryBtn.innerHTML = '<span class="btn-spinner"></span> Processing...';
+    }
+}
+
+// Stop polling for a video
+function stopPolling(videoUrl) {
+    const pending = pendingSummaries.get(videoUrl);
+    if (pending) {
+        clearInterval(pending.intervalId);
+        pendingSummaries.delete(videoUrl);
+    }
+}
+
+// Cleanup all pending summaries (e.g., on page unload)
+function cleanupPendingSummaries() {
+    for (const [videoUrl, pending] of pendingSummaries) {
+        clearInterval(pending.intervalId);
+    }
+    pendingSummaries.clear();
+}
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', cleanupPendingSummaries);
 
 function truncateText(text, maxLength) {
     if (!text) return '';
