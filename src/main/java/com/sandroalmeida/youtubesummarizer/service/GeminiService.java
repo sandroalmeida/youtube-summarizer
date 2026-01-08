@@ -64,12 +64,12 @@ public class GeminiService {
                 ),
                 "generationConfig", Map.of(
                     "temperature", 0.7,
-                    "maxOutputTokens", 2048,
+                    "maxOutputTokens", 8192,
                     "topP", 0.9
                 )
             );
 
-            logger.debug("Generation config: temperature=0.7, maxOutputTokens=2048, topP=0.9");
+            logger.debug("Generation config: temperature=0.7, maxOutputTokens=8192, topP=0.9");
 
             String response = webClient.post()
                 .uri(url)
@@ -151,6 +151,11 @@ public class GeminiService {
                 // Log finish reason
                 String finishReason = candidate.path("finishReason").asText("UNKNOWN");
                 logger.debug("Finish reason: {}", finishReason);
+
+                // Warn if summary was truncated due to token limit
+                if ("MAX_TOKENS".equals(finishReason)) {
+                    logger.warn("Summary was truncated due to maxOutputTokens limit!");
+                }
 
                 JsonNode content = candidate.path("content");
                 JsonNode parts = content.path("parts");
