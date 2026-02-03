@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Summarizer</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="tabs">
+            <button class="tab active" data-tab="subscriptions">Subscriptions</button>
+            <button class="tab" data-tab="home">Home</button>
+            <button class="tab" data-tab="saved">Saved</button>
+            <button class="refresh-btn" id="refresh-btn" title="Refresh videos">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M23 4v6h-6M1 20v-6h6"/>
+                    <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                </svg>
+            </button>
+        </div>
+        <div class="account-info" id="account-info">
+            <span class="account-name">Loading...</span>
+            <span class="account-handle"></span>
+        </div>
+    </header>
+
+    <main>
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Loading videos...</p>
+        </div>
+
+        <div class="video-grid" id="video-grid"></div>
+
+        <button class="load-more" id="load-more">Load More</button>
+    </main>
+
+    <div class="summary-modal" id="summary-modal">
+        <div class="summary-content">
+            <div class="modal-header">
+                <h3 id="summary-title">Video Title</h3>
+                <div class="modal-actions">
+                    <button class="modal-regenerate-btn" id="modal-regenerate-btn" title="Generate new summary">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M23 4v6h-6M1 20v-6h6"/>
+                            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                        </svg>
+                    </button>
+                    <button class="close-modal">&times;</button>
+                </div>
+            </div>
+            <div class="summary-loading" id="summary-loading">
+                <div class="spinner"></div>
+                <p>Getting AI Summary...</p>
+            </div>
+            <div class="summary-text" id="summary-text"></div>
+        </div>
+    </div>
+
+    <div class="confirm-modal" id="confirm-modal">
+        <div class="confirm-content">
+            <h3 id="confirm-title">Confirm Delete</h3>
+            <p id="confirm-message">Are you sure?</p>
+            <div class="confirm-actions">
+                <button class="confirm-btn confirm-cancel">Cancel</button>
+                <button class="confirm-btn confirm-delete">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
