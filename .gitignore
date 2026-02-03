@@ -1,5 +1,12 @@
 .DS_Store
 .vscode
+.idea
+*.iml
 target
 html_examples
 youtube-summarizer-requirements.pdf
+
+# OAuth tokens (sensitive)
+tokens/
+api-version/tokens/
+scraper-version/tokens/
